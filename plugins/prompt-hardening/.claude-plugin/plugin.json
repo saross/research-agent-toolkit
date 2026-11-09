@@ -1,0 +1,10 @@
+{
+  "name": "prompt-hardening",
+  "displayName": "Prompt hardening",
+  "version": "0.1.0",
+  "description": "Strengthen a prompt before you rely on it: anti-satisficing techniques for review, comparison, analysis, and other tasks where language models tend to stop at good enough.",
+  "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },
+  "repository": "https://github.com/saross/research-agent-toolkit",
+  "license": "Apache-2.0",
+  "keywords": ["prompting", "verification", "llm", "research"]
+}

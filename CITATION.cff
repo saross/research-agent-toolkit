@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Research agent toolkit"
+abstract: >-
+  Verification-first AI tooling for research: agents, skills, prompts, and methods for working
+  with large language models without trusting what they say unchecked.
+authors:
+  - family-names: Ross
+    given-names: Shawn
+    orcid: "https://orcid.org/0000-0002-6492-9025"
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/saross/research-agent-toolkit"
+keywords:
+  - large language models
+  - research software
+  - verification
+  - Claude Code

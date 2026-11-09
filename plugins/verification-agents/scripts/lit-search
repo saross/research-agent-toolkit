@@ -1,0 +1,12 @@
+#!/bin/sh
+# lit-search: run the literature-search helper beside this file.
+#
+# The helper needs httpx. uv installs it on first use, into its own cache, so nothing is installed
+# into the user's Python. Agents call this wrapper through ${CLAUDE_PLUGIN_ROOT}/scripts/lit-search.
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || exit 2
+if ! command -v uv >/dev/null 2>&1; then
+    echo "lit-search needs uv, a Python tool runner. Install it from https://docs.astral.sh/uv/," \
+         "then try again." >&2
+    exit 2
+fi
+exec uv run --quiet --script "$here/lit_search.py" "$@"

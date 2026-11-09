@@ -1,0 +1,10 @@
+{
+  "name": "research-gates",
+  "displayName": "Research gates",
+  "version": "0.1.0",
+  "description": "Checkpoints for research work done with AI: statistical power before scaling up, configuration audits before paid runs, pre-run reviews of unattended pipelines, and implementation reviews.",
+  "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },
+  "repository": "https://github.com/saross/research-agent-toolkit",
+  "license": "Apache-2.0",
+  "keywords": ["research", "methodology", "verification", "preregistration", "experiments"]
+}

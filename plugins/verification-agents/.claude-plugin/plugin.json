@@ -1,0 +1,10 @@
+{
+  "name": "verification-agents",
+  "displayName": "Verification agents",
+  "version": "0.1.0",
+  "description": "Proposer and verifier agent pairs for research: literature scouting with citation chaining, prior-art discovery, and dataset profiling, each checked by an independent adversarial verifier.",
+  "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },
+  "repository": "https://github.com/saross/research-agent-toolkit",
+  "license": "Apache-2.0",
+  "keywords": ["research", "literature-review", "verification", "confabulation", "bibliography"]
+}

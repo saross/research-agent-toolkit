@@ -1,0 +1,12 @@
+# Runs the watcher every hour. Install beside the service in ~/.config/systemd/user/, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now publish-guard-watch.timer
+[Unit]
+Description=Run the publish guard's watcher every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

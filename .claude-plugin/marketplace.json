@@ -1,0 +1,29 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "research-agent-toolkit",
+  "description": "Verification-first AI tooling for research: agents, skills, and methods.",
+  "owner": {
+    "name": "Shawn Ross",
+    "url": "https://github.com/saross"
+  },
+  "plugins": [
+    {
+      "name": "verification-agents",
+      "source": "./plugins/verification-agents",
+      "description": "Proposer and verifier agent pairs: literature scouting, prior-art discovery, and dataset profiling.",
+      "category": "research"
+    },
+    {
+      "name": "research-gates",
+      "source": "./plugins/research-gates",
+      "description": "Checkpoints before scaling up, before paid runs, and before unattended pipelines.",
+      "category": "research"
+    },
+    {
+      "name": "prompt-hardening",
+      "source": "./plugins/prompt-hardening",
+      "description": "Strengthen a prompt before you rely on it, with anti-satisficing techniques.",
+      "category": "research"
+    }
+  ]
+}

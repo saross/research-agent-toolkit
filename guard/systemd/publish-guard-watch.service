@@ -1,0 +1,17 @@
+# The publish guard's watcher, as a systemd user service. See guard/README.md, "The watcher".
+# Add `--report PATH` to ExecStart to also write the Markdown report somewhere you will see it.
+[Unit]
+Description=Publish guard watcher: check what has reached GitHub
+
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=/usr/bin/python3 -I %h/.config/publish-guard/engine/publish_guard.py --home %h/.config/publish-guard watch
+# Exit status 1 means "something needs attention", which the report shows; it is not a failure.
+# Status 3 means some check couldn't run: the unit then shows as failed
+# (`systemctl --user status publish-guard-watch`), and the report says INCOMPLETE.
+SuccessExitStatus=1
+# Each repository has its own time limit; this bounds a whole run, so a stuck run can't hold the
+# lock into the next hour's. State is saved after each repository, so a stopped run keeps what
+# it finished.
+TimeoutStartSec=50min
