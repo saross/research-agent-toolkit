@@ -739,6 +739,36 @@ def _normalise_paper(
         return {"title": str(raw), "source": source}
 
 
+def _crossref_full_title(raw: dict) -> str | None:
+    """
+    Return a CrossRef work's title with its subtitle, as "Title: Subtitle".
+
+    CrossRef holds the two in separate fields. Returning the title alone
+    made a correct full title look wrong: a proposer that copied the short
+    form was told it matched, and a verifier comparing against the
+    publisher's page saw a dropped subtitle. The BibTeX that doi.org
+    returns already joins them, so this also makes the two agree.
+
+    Args:
+        raw: A CrossRef work record (the `message` object).
+
+    Returns:
+        The title; with ": " and the subtitle appended when the record has
+        a subtitle that the title does not already end with. None when the
+        record has no title.
+    """
+    title = _first_or_none(raw.get("title", []))
+    subtitle = _first_or_none(raw.get("subtitle") or [])
+    if not isinstance(title, str) or not title.strip():
+        return title
+    if not isinstance(subtitle, str) or not subtitle.strip():
+        return title
+    title, subtitle = title.strip(), subtitle.strip()
+    if title.casefold().endswith(subtitle.casefold()):
+        return title
+    return f"{title.rstrip(':').rstrip()}: {subtitle}"
+
+
 def _normalise_crossref(raw: dict) -> dict[str, Any]:
     """Normalise a CrossRef work record."""
     # Authors: CrossRef uses {given, family} objects for people and a
@@ -772,13 +802,14 @@ def _normalise_crossref(raw: dict) -> dict[str, Any]:
             break
 
     return {
-        "title": _first_or_none(raw.get("title", [])),
+        "title": _crossref_full_title(raw),
         "authors": authors,
         "year": year,
         "doi": raw.get("DOI"),
         "openalex_id": None,
         "s2_id": None,
         "citation_count": raw.get("is-referenced-by-count"),
+        "reference_count": raw.get("references-count"),
         "source": "crossref",
         "abstract": raw.get("abstract"),
     }

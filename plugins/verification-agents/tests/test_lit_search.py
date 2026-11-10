@@ -1706,3 +1706,40 @@ def test_l1_redact_covers_keys_and_api_key_parameters(monkeypatch):
     assert "synthetic-s2-key-42" not in clean
     assert "other-value" not in clean and "api_key=<redacted>&b=c" in clean
     assert SYNTHETIC_KEY not in clean
+
+
+class TestCrossrefSubtitleAndReferenceCount:
+    """CrossRef keeps a subtitle and a reference count in fields of their own.
+
+    Found by a smoke test: `metadata` returned "Mobilization as Mediation"
+    for a paper whose full title has a subtitle, while `bibtex` returned the
+    full title, and it reported no CrossRef reference count at all.
+    """
+
+    def test_the_subtitle_is_joined_to_the_title(self):
+        record = {"title": ["Mobilization as Mediation"],
+                  "subtitle": ["Implementing a Tablet-Based Recording System"]}
+        assert lit_search._normalise_crossref(record)["title"] == (
+            "Mobilization as Mediation: Implementing a Tablet-Based Recording System"
+        )
+
+    def test_a_title_that_already_holds_the_subtitle_is_left_alone(self):
+        record = {"title": ["A Study: of two parts"], "subtitle": ["Of Two Parts"]}
+        assert lit_search._normalise_crossref(record)["title"] == "A Study: of two parts"
+
+    def test_a_trailing_colon_on_the_title_is_not_doubled(self):
+        record = {"title": ["A Study:"], "subtitle": ["Part two"]}
+        assert lit_search._normalise_crossref(record)["title"] == "A Study: Part two"
+
+    @pytest.mark.parametrize("subtitle", [None, [], [""], ["  "], [None]])
+    def test_a_missing_or_empty_subtitle_changes_nothing(self, subtitle):
+        record = {"title": ["Plain title"], "subtitle": subtitle}
+        assert lit_search._normalise_crossref(record)["title"] == "Plain title"
+
+    def test_no_title_stays_none_even_with_a_subtitle(self):
+        assert lit_search._normalise_crossref({"subtitle": ["Orphan"]})["title"] is None
+
+    def test_the_crossref_reference_count_is_reported(self):
+        record = {"title": ["T"], "references-count": 67}
+        assert lit_search._normalise_crossref(record)["reference_count"] == 67
+        assert lit_search._normalise_crossref({"title": ["T"]})["reference_count"] is None
