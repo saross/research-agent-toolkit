@@ -545,10 +545,27 @@ function collectFindings() {
 // Convergence upgrades PRIORITY, not verdict: findings from >= 2 distinct
 // lenses sharing an anchor token (a :line number or a citekey-shaped token)
 // are independent confirmations of the same issue.
+// A line anchor: an optional file name, a colon, a line number, and an
+// optional range ("methods.tex:12", ":12", "refs.bib:7", "methods.tex:10-12").
+// Each line is attributed to the file the anchor names, so a .bib or .blg line
+// never counts as a line of the target (found in a real run, where 39 of 41
+// findings were marked converged); a bare ":N" belongs to the finding's own
+// target. A range counts every line in it, up to MAX_ANCHOR_RANGE lines.
+const LINE_ANCHOR = /(?:([\w./-]+\.[A-Za-z][A-Za-z0-9]{0,4}))?:(\d{1,5})(?:\s*[-–]\s*(\d{1,5}))?\b/g
+const MAX_ANCHOR_RANGE = 20
+const baseName = (p) => String(p).split('/').pop()
+
 function anchorTokens(f) {
   const s = `${f.evidence || ''} ${f.targetClaim || ''}`
   const tokens = new Set()
-  for (const m of s.matchAll(/:(\d{1,5})\b/g)) tokens.add(`line:${f.target}:${m[1]}`)
+  const own = baseName(f.target)
+  for (const m of s.matchAll(LINE_ANCHOR)) {
+    const file = m[1] ? baseName(m[1]) : own
+    const start = Number(m[2])
+    const end = m[3] && Number(m[3]) >= start
+      ? Math.min(Number(m[3]), start + MAX_ANCHOR_RANGE - 1) : start
+    for (let n = start; n <= end; n++) tokens.add(`line:${file}:${n}`)
+  }
   for (const m of s.matchAll(/\b([A-Za-z][\w.-]*_\d{4}[a-z]?|[A-Z][A-Za-z]+\d{4}[A-Za-z]*)\b/g)) {
     tokens.add(`key:${m[1]}`)
   }

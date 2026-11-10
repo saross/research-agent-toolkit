@@ -242,3 +242,37 @@ class TestConvergence:
         assert report["result"]["scope"] == "paper"
         assert [c["label"] for c in report["calls"]].count("cross-section") == 1
         assert len([c for c in report["calls"] if c["phase"] == "Review"]) == 8
+
+
+class TestConvergenceAnchors:
+    """Line anchors belong to the file they name (found in a real run)."""
+
+    @staticmethod
+    def _two(tmp_path: Path, first: str, second: str) -> dict:
+        """Run with one minor finding from each of two lenses, evidence as given."""
+        return run(tmp_path, base_args(), responses={
+            "consistency": {"passes": False, "findings": [finding("minor", first)],
+                            "clean": [], "confidence": "high"},
+            "calibration": {"passes": False, "findings": [finding("minor", second)],
+                            "clean": [], "confidence": "high"},
+        })["result"]
+
+    def test_the_same_line_number_in_another_file_does_not_converge(
+        self, tmp_path: Path,
+    ) -> None:
+        """refs.bib:7 is not line 7 of the section."""
+        result = self._two(tmp_path, "refs.bib:7", "sections/methods.tex:7")
+        assert not any(f.get("converged") for f in result["findings"])
+
+    def test_a_log_line_does_not_converge_with_a_bare_target_line(
+        self, tmp_path: Path,
+    ) -> None:
+        """main.blg:6 against a bare :6, which belongs to the target."""
+        result = self._two(tmp_path, "main.blg:6", "see :6")
+        assert not any(f.get("converged") for f in result["findings"])
+
+    def test_a_line_inside_a_range_converges(self, tmp_path: Path) -> None:
+        """methods.tex:10-12 covers line 11, whatever path form each lens used."""
+        result = self._two(tmp_path, "methods.tex:10-12", "/papers/example/sections/methods.tex:11")
+        assert all(f.get("converged") for f in result["findings"])
+        assert [g["token"] for g in result["convergenceGroups"]] == ["line:methods.tex:11"]
