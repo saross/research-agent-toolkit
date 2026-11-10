@@ -118,8 +118,10 @@ claims fails.
 Two different things can stop a check, and they must not share a verdict.
 
 - **The registry answers authoritatively that the DOI doesn't exist:** an
-  HTTP 404 from CrossRef or DataCite, or a well-formed empty result from
-  an otherwise healthy API. That is a real finding about the candidate:
+  HTTP 404 from the DOI resolver's handle check below, or a well-formed
+  empty result from an otherwise healthy API. A 404 from CrossRef alone
+  is not enough: CrossRef holds only the DOIs it registered, and answers
+  404 for every arXiv, Zenodo, or other DataCite DOI. That is a real finding about the candidate:
   record `status: fail` on the `doi_resolves` claim.
 - **The check couldn't be completed:** HTTP 429, any 5xx error, a timeout,
   a connection error, an exhausted API budget, or a 200 whose payload is
@@ -145,23 +147,25 @@ a 429, and `metadata` reports both as
 `{"error": "No metadata found for DOI: ..."}`. This is a known limitation.
 Until the helper returns three distinct states, **treat "No metadata
 found" as undetermined until you have seen a status code**, by checking
-the DOI directly against the registry:
+the DOI directly against the DOI resolver, which answers for every
+registry:
 
 ```bash
-curl -sS -o /dev/null -w '%{http_code}\n' \
-  -H "User-Agent: lit-scout/1.0 (mailto:${LIT_SCOUT_MAILTO:-you@example.org})" \
-  "https://api.crossref.org/works/<doi>"
+curl -sS -o /dev/null -w '%{http_code}\n' "https://doi.org/api/handles/<doi>"
 ```
 
-A 404 justifies `fail`. A 429, a 5xx, or no answer at all means
+A 200 means the DOI exists, whichever registry holds it. A 404 justifies
+`fail`. A 429, a 5xx, or no answer at all means
 `unverifiable`. If you can't get a status code, the claim is
 `unverifiable`, never `fail`.
 
 ### arXiv rows (DOIs of the form 10.48550/arXiv.\<id\>)
 
 These are DOIs registered with DataCite, and can be verified like any
-other: `lit-search metadata` resolves them through the DataCite and
-OpenAlex chain. If that call is thin or fails, query the arXiv API
+other. `lit-search metadata` asks CrossRef, Semantic Scholar, and
+OpenAlex in turn; CrossRef doesn't hold DataCite DOIs, so for an arXiv
+DOI the record comes from the other two. If that call is thin or fails,
+query the arXiv API
 directly, which is authoritative for the title, author list, and dates:
 `curl -s 'http://export.arxiv.org/api/query?id_list=<id>'`. Do NOT mark an
 arXiv row unverifiable without trying the arXiv API.

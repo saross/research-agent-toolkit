@@ -110,9 +110,9 @@ grounding it in the table, which forced a separate follow-up search.
 
 Grounding sources for arXiv items, in order:
 
-1. `lit-search metadata "10.48550/arXiv.<id>"`, which resolves through the
-   DataCite chain. When it returns a full record, use it exactly like a
-   CrossRef DOI.
+1. `lit-search metadata "10.48550/arXiv.<id>"`. CrossRef doesn't hold
+   these DOIs, so the record comes from Semantic Scholar and OpenAlex.
+   When it returns a full record, use it exactly like a CrossRef DOI.
 2. The arXiv API directly, when (1) is thin or empty:
    `curl -s 'http://export.arxiv.org/api/query?id_list=<id>'` (Atom XML,
    no authentication; title, full author list, and dates verbatim). For
