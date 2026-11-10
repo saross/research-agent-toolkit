@@ -402,3 +402,65 @@ def test_success_is_reported_only_with_both_clones_at_the_output_commit(
     assert transact(here, there, write_script(here)) == 0
     assert git(here, "rev-parse", "HEAD") == git(there, "rev-parse", "HEAD")
     assert "Both clones were on the branch at the output commit" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Fourth review round: git's own address rewriting
+# ---------------------------------------------------------------------------
+
+
+def test_address_rewriting_cannot_send_a_push_somewhere_else(
+    clones: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """A `pushInsteadOf` rule keyed on the expanded address must not be applied to it.
+
+    The remote is an alias that `insteadOf` expands to the real address; a
+    `pushInsteadOf` rule would rewrite that real address to another
+    repository if it were pushed to directly. Pushing to the remote by name
+    uses the address git reports, and the other repository gets nothing.
+    """
+    here, there = clones
+    real = git(here, "remote", "get-url", "origin")
+    other = tmp_path / "other.git"
+    git(tmp_path, "init", "--quiet", "--bare", str(other))
+    git(here, "config", "remote.origin.url", "fixture-alias:")
+    git(here, "config", f"url.{real}.insteadOf", "fixture-alias:")
+    git(here, "config", f"url.{other}.pushInsteadOf", real)
+    assert git(here, "remote", "get-url", "--push", "--all", "origin") == real
+
+    assert transact(here, there, write_script(here)) == 0
+    assert is_empty(other)
+    assert origin_refs(there)["refs/heads/main"] == git(here, "rev-parse", "HEAD")
+
+
+def test_a_push_rewrite_that_changes_the_destination_is_refused(
+    clones: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """A rule that does redirect pushes shows in the effective address, and stops the run."""
+    here, there = clones
+    real = git(here, "remote", "get-url", "origin")
+    other = tmp_path / "other.git"
+    git(tmp_path, "init", "--quiet", "--bare", str(other))
+    git(here, "config", f"url.{other}.pushInsteadOf", real)
+    start = git(here, "rev-parse", "HEAD")
+    assert transact(here, there, write_script(here)) == 1
+    assert git(here, "rev-parse", "HEAD") == start and is_empty(other)
+
+
+def test_remote_settings_changed_during_the_run_stop_the_output_push(
+    clones: tuple[Path, Path], tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """The script (standing in for anyone) adds a push address in the other clone mid-run."""
+    here, there = clones
+    extra = tmp_path / "extra.git"
+    git(tmp_path, "init", "--quiet", "--bare", str(extra))
+    interfere = (
+        "import subprocess\n"
+        f"subprocess.run(['git', 'remote', 'set-url', '--add', '--push', 'origin', {str(extra)!r}],"
+        " check=True)\n"
+    )
+    assert transact(here, there, write_script(here, extra=interfere)) == 1
+    assert is_empty(extra)
+    err = capfd.readouterr().err
+    assert "must have one address" in err  # found by the check made just before the push
+    assert "output commit (there, not yet pushed)" in err

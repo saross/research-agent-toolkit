@@ -47,13 +47,21 @@ What it then does, checking each step:
    fast-forwards to it.
 
 **What is published.** Each push names one commit hash and one branch
-(`git push ADDRESS HASH:refs/heads/BRANCH`), so no other branch, tag, or
+(`git push REMOTE HASH:refs/heads/BRANCH`), so no other branch, tag, or
 configured push rule takes part, and each commit's parent is checked first,
-so the push adds that single commit and nothing behind it. The address is
-the remote's one address, read and checked before anything is committed and
-then used directly, so a remote with a second push address is refused and a
-later change to the remote's settings can't redirect the push. Push hooks
-run as usual.
+so the push adds that single commit and nothing behind it. Push hooks run
+as usual.
+
+**Where it is published.** A push to a remote goes to every push address
+the remote has, after git's own address rewriting (`url.*.insteadOf` and
+`pushInsteadOf`). The script asks git for the remote's effective addresses,
+and requires exactly one, the same for fetching and pushing. It asks again
+immediately before each push and stops if the answer has changed since the
+start. It pushes to the remote by name, so the address git uses is the one
+it reported. (Pushing to the reported address itself would be wrong: git
+would apply its rewriting rules to it a second time.) Git's configuration
+could still be changed in the instant between that last check and the push;
+the script does not guard against that.
 
 **Other writers.** The script does not lock either clone. It checks where
 each clone is before and after every step that depends on it, so if another
@@ -372,7 +380,9 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
     require_single_commit(here, script_commit, head, [script_rel], "here")
 
     # ---- 2. push that one commit to the one branch ---------------------------
-    here(["push", "--quiet", "--no-follow-tags", url, f"{script_commit}:{ref}"])
+    if upstream_of(branch, here) != (origin, url, ref):
+        raise Stop("this clone's remote settings changed during the run; nothing was pushed")
+    here(["push", "--quiet", "--no-follow-tags", origin, f"{script_commit}:{ref}"])
     del progress["script commit (here, not yet pushed)"]
     progress["script commit (pushed)"] = script_commit
 
@@ -385,7 +395,9 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
         )
     require_position(there, branch, head, "the other clone", "before taking the script")
     there(["merge", "--quiet", "--ff-only", script_commit])
+    progress["script commit merged there (position not yet confirmed)"] = script_commit
     require_position(there, branch, script_commit, "the other clone", "before the run")
+    del progress["script commit merged there (position not yet confirmed)"]
     remote.run([args.python, script_rel])
 
     # ---- 4. commit exactly the listed outputs there --------------------------
@@ -407,7 +419,12 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
     require_single_commit(there, output_commit, script_commit, outputs, "the other clone")
 
     # ---- 5. push that one commit to the one branch ---------------------------
-    there(["push", "--quiet", "--no-follow-tags", there_url, f"{output_commit}:{ref}"])
+    if upstream_of(branch, there) != (there_origin, there_url, ref):
+        raise Stop(
+            "the other clone's remote settings changed during the run; "
+            "the outputs were not pushed"
+        )
+    there(["push", "--quiet", "--no-follow-tags", there_origin, f"{output_commit}:{ref}"])
     del progress["output commit (there, not yet pushed)"]
     progress["output commit (pushed)"] = output_commit
 
@@ -420,8 +437,10 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
         )
     require_position(here, branch, script_commit, "this clone", "before taking the outputs")
     here(["merge", "--quiet", "--ff-only", output_commit])
+    progress["output commit merged here (final position not yet confirmed)"] = output_commit
     require_position(here, branch, output_commit, "this clone", "after taking the outputs")
     require_position(there, branch, output_commit, "the other clone", "at the end")
+    del progress["output commit merged here (final position not yet confirmed)"]
     progress["outputs merged here"] = output_commit
     return script_commit, output_commit
 

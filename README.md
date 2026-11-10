@@ -140,7 +140,8 @@ pushes them: the profile script, and the output files the script lists. A script
 are clean, on the same branch and commit, and level with the remote. Each push names one commit
 and one branch, after checking that the commit sits directly on the one before it and changes
 only the expected files, so other branches, tags, and anyone else's commits are not published
-by it. The remote must have a single address, which is checked and then used directly. The
+by it. The remote must have a single effective address, after git's own address rewriting,
+and that is checked at the start and again just before each push. The
 script does not lock the clones: it checks where each one is before and after every step, and
 stops if something else has moved it, but it can't promise to notice another writer in every
 instant. It never switches branch, resets, or force-pushes.
