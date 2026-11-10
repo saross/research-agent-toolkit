@@ -134,9 +134,12 @@ earning its cost in your own work. A failure of this command never changes a run
 The dataset profiler can run its Python on another machine over SSH, with git carrying the
 script there and the results back. Give `remote_exec: {host, workdir, venv_python}` in the
 configuration you pass to `/verification-agents:data-profile-iterate`. The repository must
-already be cloned on that machine, and the profiler commits and pushes on your current branch,
-so use it in a repository where that is what you want. The verifier still runs on this machine,
-so the dataset must be readable here as well.
+already be cloned on that machine. The exchange makes two commits on your current branch and
+pushes them: the profile script, and the output files the script lists. A script in the plugin
+(`scripts/remote_run.py`) does it as one checked step. It refuses to start unless both clones
+are clean, on the same branch and commit, and level with the remote, so that nothing else can
+be committed or published along the way, and it never switches branch, resets, or force-pushes.
+The verifier still runs on this machine, so the dataset must be readable here as well.
 
 ## Why verification first
 

@@ -739,6 +739,40 @@ def _normalise_paper(
         return {"title": str(raw), "source": source}
 
 
+def _join_title_and_subtitle(title: str, subtitle: str) -> str:
+    """
+    Join a title and a subtitle that a registry holds in separate fields.
+
+    The same rule is kept in three places: this function in the published
+    `lit_search.py`, in the personal `lit-search.py`, and in
+    `lit-scout-zotero-import.py`. Change all three together.
+
+    Args:
+        title: The main title, stripped, not empty.
+        subtitle: The subtitle, stripped, not empty.
+
+    Returns:
+        - The title alone when the subtitle is already in it: the two are
+          equal, or the title ends with the subtitle straight after a
+          separator (a colon, dash, full stop, question mark, or exclamation
+          mark). A subtitle that merely matches the end of a word, as
+          "Information" does in "Disinformation", is a distinct subtitle.
+        - "Title? Subtitle" when the title ends with a question or
+          exclamation mark, which stands as the separator.
+        - "Title: Subtitle" otherwise.
+    """
+    folded_title, folded_subtitle = title.casefold(), subtitle.casefold()
+    if folded_title == folded_subtitle:
+        return title
+    if folded_title.endswith(folded_subtitle):
+        before = title[: len(title) - len(subtitle)].rstrip()
+        if before and before[-1] in ":-\u2013\u2014.?!":
+            return title
+    if title[-1] in "?!":
+        return f"{title} {subtitle}"
+    return f"{title.rstrip(':').rstrip()}: {subtitle}"
+
+
 def _crossref_full_title(raw: dict) -> str | None:
     """
     Return a CrossRef work's title with its subtitle, as "Title: Subtitle".
@@ -763,10 +797,7 @@ def _crossref_full_title(raw: dict) -> str | None:
         return title
     if not isinstance(subtitle, str) or not subtitle.strip():
         return title
-    title, subtitle = title.strip(), subtitle.strip()
-    if title.casefold().endswith(subtitle.casefold()):
-        return title
-    return f"{title.rstrip(':').rstrip()}: {subtitle}"
+    return _join_title_and_subtitle(title.strip(), subtitle.strip())
 
 
 def _normalise_crossref(raw: dict) -> dict[str, Any]:

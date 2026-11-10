@@ -1743,3 +1743,23 @@ class TestCrossrefSubtitleAndReferenceCount:
         record = {"title": ["T"], "references-count": 67}
         assert lit_search._normalise_crossref(record)["reference_count"] == 67
         assert lit_search._normalise_crossref({"title": ["T"]})["reference_count"] is None
+
+SUBTITLE_CASES = [
+    ("Disinformation", "Information", "Disinformation: Information"),
+    ("Who were they?", "People of the plain", "Who were they? People of the plain"),
+    ("Stop!", "A warning", "Stop! A warning"),
+    ("A Study: of two parts", "Of Two Parts", "A Study: of two parts"),
+    ("A Study \u2013 Of Two Parts", "of two parts", "A Study \u2013 Of Two Parts"),
+    ("Same Words", "same words", "Same Words"),
+    ("A Study:", "Part two", "A Study: Part two"),
+    # Greek: "The city", "One".
+    ("\u0397 \u03c0\u03cc\u03bb\u03b7", "\u039c\u03b9\u03b1",
+     "\u0397 \u03c0\u03cc\u03bb\u03b7: \u039c\u03b9\u03b1"),
+]
+
+
+@pytest.mark.parametrize(("title", "subtitle", "expected"), SUBTITLE_CASES)
+def test_title_and_subtitle_join_on_a_real_boundary(title, subtitle, expected):
+    """Review finding R16: a suffix inside a word is not a repeated subtitle."""
+    record = {"title": [title], "subtitle": [subtitle]}
+    assert lit_search._normalise_crossref(record)["title"] == expected

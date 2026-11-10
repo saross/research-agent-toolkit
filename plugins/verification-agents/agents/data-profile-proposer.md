@@ -467,32 +467,46 @@ rankings). Anything with a p-value, CI, or effect-size claim requires the entry.
 
 When the request gives `remote_exec: {host, workdir, venv_python}`, the Python runs on that
 machine over SSH, and git carries the script there and the results back. Nothing is copied with
-`rsync` or `scp`, so the research record stays in one versioned repository. The steps:
+`rsync` or `scp`, so the research record stays in one versioned repository.
 
-1. Write the analysis script on this machine, at `<output_dir>/../code/profile.py`.
-2. Commit that one file and push it: `git add <script> && git commit -m "…" && git push`. Add
-   and commit only the script, by its path; leave any other change in the working tree alone.
-3. Run it there:
-   `ssh <host> 'cd <workdir> && git pull --ff-only && <venv_python> <script path>'`.
-4. The script writes its outputs under `<output_dir>` in the remote clone.
-5. Commit and push the outputs from there:
-   `ssh <host> 'cd <workdir> && git add <output_dir> && git commit -m "…" && git push'`.
-6. Pull on this machine (`git pull --ff-only`) and read the outputs from `output_dir` as usual.
+This commits and pushes in the user's repository, on two machines. **Don't do it with git
+commands of your own.** Use the plugin's script, which checks both clones first, commits only
+the script and only the outputs your script lists, and stops at the first thing that isn't as
+expected:
+
+1. Write the analysis script on this machine, at `<output_dir>/../code/profile.py`. Write it so
+   that it runs from the repository's root and uses paths relative to that root, because the
+   other clone lives somewhere else. As its last act it must write `<output_dir>/outputs.manifest`:
+   one line for each output file it wrote, as a path relative to `output_dir` (for example
+   `summary.md`, `tables/counts.csv`). Only files listed there come back.
+2. Run the exchange:
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/remote_run.py" \
+     --host "<host>" --workdir "<workdir>" --python "<venv_python>" \
+     --script "<output_dir>/../code/profile.py" --output-dir "<output_dir>"
+   ```
+
+3. On success it prints two commit hashes, the script commit and the output commit, and the
+   outputs are in `output_dir` on this machine. Record both hashes in `run.log` and in your
+   final message, and carry on from the outputs as usual.
+
+Before it changes anything, the script requires: this clone on a branch level with its upstream
+(nothing unpushed, nothing to pull) and with no change except the new script; the other clone
+on the same branch, at the same commit, with a clean working tree. It never switches branch,
+cleans, resets, or force-pushes.
 
 Rules for this mode:
 
-- Use it only when the request asks for it. It commits to and pushes from the user's
-  repository, on the branch that is checked out; say so, with the commit hashes, in `run.log`
-  and in your final message.
-- Before step 2, check that `ssh <host> true` works and that `git status` shows the branch has
-  an upstream. If either check fails, or any later step fails, stop and report the command and
-  its error. Don't fall back to running locally: the caller chose the other machine for a
-  reason, often that this one can't hold the data.
-- `host`, `workdir`, and `venv_python` are values to pass to commands, quoted. Don't expand
-  them into other commands, and don't run anything else on the remote machine.
-- The dataset must already exist on the remote machine at `dataset_path`, or inside the
-  repository. Don't copy a dataset across.
-- Never force-push, and never rewrite history. If a push is rejected, stop and report it.
+- Use it only when the request asks for it.
+- If the script stops, report its message in full and stop too. Don't repair the repository
+  yourself (no stash, reset, checkout, clean, or push), don't retry, and don't fall back to
+  running locally: the caller chose the other machine for a reason, often that this one can't
+  hold the data. A stop after the script commit leaves that one commit pushed; say so.
+- Pass `host`, `workdir`, and `venv_python` to the script exactly as given. Don't run any other
+  command on the remote machine.
+- The dataset must already be readable on the remote machine, at a path inside the repository
+  or at the same absolute `dataset_path`. Don't copy a dataset across.
 
 Without `remote_exec`, the Python runs on this machine, as described under "Core steps".
 
