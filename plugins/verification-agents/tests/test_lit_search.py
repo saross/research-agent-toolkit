@@ -1888,7 +1888,16 @@ class TestBibtexRecordValidation:
 
     def test_an_empty_value_is_not_a_field(self):
         assert lit_search._bibtex_record("@article{key, title=}") is None
-        assert lit_search._bibtex_record("@article{key, title={}, year={2024}}") is None
+        assert lit_search._bibtex_record("@article{key, title={}}") is None
+
+    def test_an_empty_optional_field_is_dropped_not_the_record(self):
+        """Review finding R25: note={} must not discard a usable record."""
+        for empty in ("note={}", "abstract = {  }"):
+            record = lit_search._bibtex_record(
+                f"@article{{key, title={{Synthetic}}, year={{2024}}, {empty}}}")
+            assert record is not None
+            assert "Synthetic" in record and "2024" in record
+            assert "note" not in record and "abstract" not in record
 
     def test_a_string_macro_is_expanded_into_the_record(self):
         record = lit_search._bibtex_record(

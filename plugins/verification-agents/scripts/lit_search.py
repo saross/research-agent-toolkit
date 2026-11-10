@@ -1485,7 +1485,7 @@ def _bibtex_record(text: str) -> str | None:
     value, and dropped @string definitions that a field relied on). The
     answer must begin, after blank and "%" comment lines, with "@". The
     record returned is the first entry with a citation key and at least one
-    field, every field non-empty. @string macros (and the standard month
+    field with a value; empty fields are left out. @string macros (and the standard month
     names) are expanded into the fields, so the record stands alone in a
     .bib file shared with other DOIs; an undefined macro, a parse error, a
     directive alone, or a truncated record gives None, and the caller tries
@@ -1505,12 +1505,18 @@ def _bibtex_record(text: str) -> str | None:
         log.debug("bibtex: answer did not parse: %s", type(exc).__name__)
         return None
     for entry in database.entries:
-        fields = {k: v for k, v in entry.items() if k not in ("ID", "ENTRYTYPE")}
         key = str(entry.get("ID", "")).strip()
-        if not key or not fields or not all(str(v).strip() for v in fields.values()):
+        # An empty optional field ("note={}") is dropped, not a reason to refuse
+        # the record (review finding R25); a record needs a key and at least one
+        # field with a value. A malformed "title=" never parses as an entry.
+        fields = {
+            k: v for k, v in entry.items()
+            if k not in ("ID", "ENTRYTYPE") and str(v).strip()
+        }
+        if not key or not fields:
             continue
         single = BibDatabase()
-        single.entries = [entry]
+        single.entries = [{"ID": entry["ID"], "ENTRYTYPE": entry["ENTRYTYPE"], **fields}]
         writer = BibTexWriter()
         writer.indent = "  "
         return bibtexparser.dumps(single, writer).strip()
