@@ -105,14 +105,14 @@ Look for evidence that the entity is acting as an **agent, operator, or organisa
 When the entity name is used as **shorthand for people/organisation**, classify by intended
 referent:
 
-- "The hotel denies the accusation" → Business (hotel = proprietor/management)
+- "The hotel denies the accusation" → Organisation (hotel = proprietor/management, a business)
 - "The church condemns the proposal" → Organisation (church = congregation/leadership)
 - "Meeting **at** the church" → Building (church = physical venue)
 
 ### Passive vs Active Voice
 
 - **Passive**: "[entity] was refurbished" → Building (recipient of action)
-- **Active**: "[entity] refurbished its premises" → Business (agent of action)
+- **Active**: "[entity] refurbished its premises" → Organisation (agent of action)
 
 ### Both (Polyhierarchical) Classification
 
@@ -153,7 +153,10 @@ write the file.
   `${CLAUDE_PLUGIN_ROOT}/skills/entity-classifier/templates/classification-report.md`,
   unless the project has its own.
 - **Include:** the analysis of each mention, a summary of patterns,
-  taxonomy recommendations, and comparison tables.
+  taxonomy recommendations, and comparison tables only where the project has
+  already classified other entity types, with their own figures.
+- **Plugin version** for the report's method line: the `version` in
+  `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`.
 
 ### Per-mention template
 
