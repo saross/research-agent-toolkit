@@ -5,7 +5,9 @@ description: >-
   or asks to reflect on the current session, do end-of-session
   reflections, or similar. Guides Claude through updating the project's
   reflection documents in priority order, answering structured prompts,
-  and keeping the reflection and investigation logs.
+  and keeping the reflection and investigation logs, and an agent-kept
+  register of observations about the collaboration (created only with
+  the user's agreement).
 ---
 
 # End-of-session reflection
@@ -27,16 +29,18 @@ The skill works in any project. Reflections are always scoped to the
 
 1. **Determine the project** from the working directory, and name it at
    the start ("Reflecting on session work in" and the project's name).
-2. **Find the reflection documents:** `wiki/reflections/` (preferred),
-   falling back to `docs/notes/reflections/`, relative to the project
-   root. If neither exists, create the starting structure below.
+2. **Find the reflection documents:** a reflections folder the
+   project's `CLAUDE.md` names; else `wiki/reflections/`, falling back
+   to `docs/notes/reflections/`, relative to the project root. If none
+   exists, propose the starting structure below and create it once the
+   user agrees (`wiki/reflections/` unless they choose another place).
 3. **Tag each entry** with the project name and the session date in its
    header, so entries are unambiguous when read out of context.
 
 ## Starting structure (new projects)
 
-When neither folder exists, create `wiki/reflections/` and fill it in two
-tiers. The front matter of each document is in this skill's
+When no reflections folder exists and the user has agreed to one, create
+it and fill it in two tiers. The front matter of each document is in this skill's
 `templates/` folder, `${CLAUDE_PLUGIN_ROOT}/skills/reflect/templates/`.
 
 ### Always create
@@ -75,8 +79,7 @@ auditable, and comparable across projects. Every new entry follows this
 contract:
 
 - **Heading:** `## Entry N — YYYY-MM-DD: <title>`, continuing the file's
-  numbering. If the file uses an older date-first form, keep its
-  numbering scheme but add the anchor fields below.
+  numbering.
 - **First two lines of every entry (mandatory):**
   - `**Session:** <session-id>`. Get the current session's ID from the
     newest transcript for this project: `ls -t
@@ -85,8 +88,9 @@ contract:
     character other than a letter, digit, or hyphen replaced by `-`
     (so `/srv/survey/.notes/x` becomes `-srv-survey--notes-x`); if no
     folder matches, list `~/.claude/projects/` and find it. The ID is
-    the file name without `.jsonl`. If it really can't be found, write
-    `unrecorded`. Never guess.
+    the file name without `.jsonl`. If it really can't be found, or
+    several transcripts there changed in the last few minutes (another
+    session may be running), write `unrecorded`. Never guess.
   - `**Instance:** primary` (the default), or `post-compaction` or
     `continuation-from-summary` when this instance did not directly
     experience the episode.
@@ -103,15 +107,9 @@ contract:
   `**Session anchor (retro-matched YYYY-MM-DD):** …`, with a confidence
   label. Never present a later match as contemporaneous.
 
-> **Not a reflection document: `working-notes.md`.** A project's working
-> notes (empirical observations, methodological notes, and analytical
-> findings) are the research record itself, not part of the reflection
-> set. This skill neither creates nor edits them. Their usual home is
-> `wiki/working-notes.md`, or `docs/notes/working-notes.md` beside
-> `reflections/`, never inside it. If an older project has one inside
-> `reflections/`, exclude it from the loop below and leave it alone.
-> Reflection is meta-research (how the work and the collaboration
-> unfold); keep the layers separate.
+> **Never create or edit `working-notes.md`.** A project's working notes
+> are the research record itself, not a reflection document; if one sits
+> inside the reflections folder, leave it out of the loop below.
 
 ### Never create automatically
 
@@ -186,35 +184,30 @@ contributions matter, weave them into the narrative.
 **default-keep** register of what *you*, the agent, observed about *the
 user* (their working style, choices, and decision dynamics), plus your
 own self-critiques of the collaboration. The defining axis is **the
-observer**: what you observe about the user goes here; what the user
-observes about you belongs in a register of their own words, if the
-project keeps one. It lives beside the reflection set
-(`wiki/claude-observations.md`, or `docs/notes/claude-observations.md`),
-**never inside `reflections/`**, so it is outside the priority loop
-above. You write it directly: it is yours, kept by default, and not
-waiting on the user's acceptance. Be liberal; empty is not the expected
-outcome.
+observer**: what you observe about the user goes here, not what the
+user observes about you. It lives beside the reflection set (for
+example `wiki/claude-observations.md`), **never inside the reflections
+folder**, so it is outside the priority loop above.
+
+**The first time, ask.** If the file doesn't exist, say what it is for
+and ask whether to keep one; if the user agrees, create it from this
+skill's template (`templates/claude-observations.md`). Once it exists,
+you write it directly: entries are kept by default, not waiting on the
+user's acceptance. Be liberal; empty is not the expected outcome.
 
 After the reflection documents, append one to four entries:
 
 - what you observed about how the user worked this session: a
   working-style choice worth carrying forward, a productive push-back, a
   self-critique of your own part, or a win or pitfall of how you work
-  together, seen from your side;
-- not the user's observations of you; those are theirs to make, in their
-  own words.
+  together, seen from your side.
 
-**Duplicate guard.** Another end-of-session routine may write to this
-register too, and either may run first. Before writing, check for
-entries already dated today; if this session's observations are there,
-add only what is genuinely new.
+**Duplicate guard.** Check for entries already dated today first; if
+this session's observations are there, add only what is genuinely new.
 
 **Show them.** After writing, show the full text of the new entries in
 the session's closing message. The user reads them at session close to
 correct course; kept by default does not mean unseen.
-
-If the file doesn't exist, create it from this skill's template
-(`templates/claude-observations.md`).
 
 Format: `## claude-obs N — YYYY-MM-DD: <one-line summary>`, with
 **Pattern.**, **Lesson.**, and **How to apply.** sub-blocks. Never change
@@ -229,7 +222,3 @@ that cross-references the old one.
 - Continue existing numbering sequences; never restart them.
 - Use dated section headers in the established format.
 - Update document footers or timestamps where they exist.
-- Footer fields (texture, engagement level, relational note) are
-  optional. Include one only when it discriminates: if engagement is
-  always "high", leave it out, and skip the relational note when nothing
-  notable happened.
