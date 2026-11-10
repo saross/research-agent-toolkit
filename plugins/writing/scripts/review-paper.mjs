@@ -608,7 +608,10 @@ const tally = (fs) => ({
 function metaContext() {
   const parts = []
   if (A.paperBrief) parts.push(`PAPER BRIEF (the static context the lenses had):\n${A.paperBrief}`)
-  if (A.sourceNotesDir) parts.push(`Source notes the lenses used (you may read them): ${A.sourceNotesDir}`)
+  if (A.sourceNotesDir) {
+    parts.push(`Source notes for the cited works (the source-fidelity lens, if it ran, checks ` +
+      `cited claims against them; you may read them): ${A.sourceNotesDir}`)
+  }
   if (Array.isArray(A.bibPaths) && A.bibPaths.length) {
     parts.push(`Bibliography files (you may read them): ${A.bibPaths.join(', ')}`)
   }
