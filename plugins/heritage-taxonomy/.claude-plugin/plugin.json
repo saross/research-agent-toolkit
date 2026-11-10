@@ -1,0 +1,10 @@
+{
+  "name": "heritage-taxonomy",
+  "displayName": "Heritage taxonomy",
+  "version": "0.1.0",
+  "description": "Classify mentions of dual-nature entities in historical text (hotels, churches, halls, schools of arts) as building, organisation, or both, by a linguistic heuristic, for faceted controlled vocabularies aligned with the Getty Art & Architecture Thesaurus.",
+  "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },
+  "repository": "https://github.com/saross/research-agent-toolkit",
+  "license": "Apache-2.0",
+  "keywords": ["cultural-heritage", "taxonomy", "classification", "digital-humanities", "historical-newspapers"]
+}
