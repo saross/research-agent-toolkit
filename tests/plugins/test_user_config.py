@@ -70,3 +70,22 @@ def test_verification_agents_declares_the_library_commands() -> None:
     declared = _declared(PLUGINS / "verification-agents")
     assert set(declared) == {"library_check_command", "library_import_command"}
     assert all(spec["type"] == "string" for spec in declared.values())
+
+
+POSITIONAL = re.compile(r"\$(?:[0-9]|\{[0-9]+\})")
+
+
+@pytest.mark.parametrize(
+    "command",
+    sorted(PLUGINS.glob("*/commands/*.md")),
+    ids=lambda p: f"{p.parent.parent.name}/{p.name}",
+)
+def test_command_files_hold_no_positional_placeholders(command: Path) -> None:
+    """A `$1` in a command file is replaced with a word of the user's request.
+
+    Claude Code substitutes `$1`, `$2`, and so on in command files, so shell
+    written there with its own positional parameters arrives broken. Shell
+    that needs arguments belongs in a script under the plugin's `scripts/`.
+    """
+    found = POSITIONAL.findall(command.read_text())
+    assert not found, f"positional placeholders in {command.name}: {sorted(set(found))}"

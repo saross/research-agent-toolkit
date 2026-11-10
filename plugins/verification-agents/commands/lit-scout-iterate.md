@@ -73,22 +73,22 @@ import reads it.
 ### Extracting the blocks
 
 Both agents embed their machine-readable data as fenced `jsonl` blocks
-between comment markers. Extract them with:
+between comment markers. Extract them with the plugin's helper, which
+takes the input file, the marker, and the output file:
 
 ```bash
-extract_block() {
-  # Arguments: input_file marker output_file
-  # Writes the lines between <!-- BEGIN ${marker} --> and <!-- END ${marker} -->,
-  # without the fence lines, to output_file.
-  awk "/<!-- BEGIN $2 -->/,/<!-- END $2 -->/" "$1" \
-    | sed -n '/^```jsonl/,/^```$/{/^```/d; p}' \
-    > "$3"
-}
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract INPUT_FILE MARKER OUTPUT_FILE
 ```
 
 Use it twice in each iteration: on the proposer's draft (marker
 `claims.jsonl`), and on the verifier's integrated report (marker
-`corrections.jsonl`).
+`corrections.jsonl`). It exits with an error, and leaves the output file
+empty, when it finds no block. Don't write your own extraction in its
+place.
+
+When you save an agent's output, save all of it, exactly as it came. If
+it reached you with every line indented, that is harmless: the helper
+ignores leading spaces.
 
 ### The loop
 
@@ -134,8 +134,9 @@ mkdir -p "${ITERATE_ROOT}/iter-${N}"
 #### Step C: extract the proposer's claims
 
 ```bash
-extract_block "${ITERATE_ROOT}/iter-${N}/draft.md" "claims.jsonl" \
-              "${ITERATE_ROOT}/iter-${N}/claims.jsonl"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract \
+  "${ITERATE_ROOT}/iter-${N}/draft.md" "claims.jsonl" \
+  "${ITERATE_ROOT}/iter-${N}/claims.jsonl"
 ```
 
 If `claims.jsonl` comes out empty or malformed, note a warning. The verifier
@@ -170,8 +171,9 @@ REPORT="${ITERATE_ROOT}/iter-${N}/report.md"
 #### Step F: extract the corrections
 
 ```bash
-extract_block "${ITERATE_ROOT}/iter-${N}/report.md" "corrections.jsonl" \
-              "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract \
+  "${ITERATE_ROOT}/iter-${N}/report.md" "corrections.jsonl" \
+  "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
 ```
 
 If the verifier's output has no corrections block at all, treat it as a
@@ -179,21 +181,27 @@ verifier failure (see "Failures and recovery" below).
 
 #### Step G: read the verdict
 
-Read the verdict from the **Summary** in the report's Verification section,
-or work it out from `corrections.jsonl` directly:
+Work the verdict out from `corrections.jsonl`, with the plugin's helper:
 
 ```bash
-PASS_CT=$(grep -c '"status":"pass"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-PARTIAL_CT=$(grep -c '"status":"partial"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-FAIL_CT=$(grep -c '"status":"fail"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-UNVER_CT=$(grep '"status":"unverifiable"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" \
-  | grep -vc '"claim_id":"_legacy"' || true)
-LEGACY_CT=$(grep -c '"claim_id":"_legacy"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-TOTAL_CT=$(grep -c . "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" count \
+  "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
 ```
+
+It parses every line and prints `PASS_CT`, `PARTIAL_CT`, `FAIL_CT`,
+`UNVER_CT`, `LEGACY_CT`, `INVALID_CT`, and `TOTAL_CT` as `NAME=value`
+lines, then `FAIL_SET`, the failed `claim_id`s. Use those values in the
+cases below. Don't count by searching the file for text: a verdict
+written with different spacing would be missed, and a run with failed
+claims would look like a pass.
 
 `UNVER_CT` leaves out the `_legacy` placeholder, which also carries
 `status: unverifiable` but means something else entirely (see G.5).
+
+**If the helper exits with an error** (`INVALID_CT` above zero, or no
+verdicts at all), the verdict can't be trusted. Don't treat it as PASS
+and don't iterate: treat it as a verifier failure (see "Failures and
+recovery" below).
 
 Five cases, checked in order:
 
@@ -248,11 +256,8 @@ re-verified.
 
 #### Step H: no-progress check (FAIL only)
 
-```bash
-CURRENT_FAIL_SET=$(grep -E '"status":"fail"' \
-  "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" \
-  | python3 -c "import sys,json; print(' '.join(sorted(json.loads(l)['claim_id'] for l in sys.stdin)))")
-```
+Take `CURRENT_FAIL_SET` from the `FAIL_SET` line that the count in Step G
+printed for this iteration.
 
 If `CURRENT_FAIL_SET` equals `LAST_FAIL_SET` and `N > 0`, stop with status
 `NO_PROGRESS`: the proposer can't act on the remaining fix hints. Go to
@@ -273,7 +278,7 @@ Always return:
 # lit-scout-iterate result: <query>
 
 **Status:** <PASS | PARTIAL | UNVERIFIABLE | THROTTLED | FAIL | NO_PROGRESS | CAP_REACHED | LEGACY_PROPOSER>
-**Iterations run:** <0..5>
+**Rounds run:** <1..6> (one proposer and verifier pair each; the last is `iter-{N}`)
 **Workspace:** ${ITERATE_ROOT}
 
 ## Per-iteration trajectory
@@ -298,9 +303,11 @@ it as such and restore the row.
 
 ## Final integrated report
 
-(Verbatim contents of the final iteration's report.md: the verifier's
-integrated report from the iteration that ended the loop, including the
-corrected Findings table, which is what the user actually wants.)
+(The final iteration's report.md: the verifier's integrated report from
+the iteration that ended the loop, word for word, including the corrected
+Findings table, which is what the user actually wants. Leave out its two
+machine-readable `jsonl` blocks, and say that they are in the files listed
+below.)
 
 ---
 
@@ -448,6 +455,7 @@ LLM-assisted data extraction from historical documents; scope:
 | The proposer errors at a later iteration | Iterate mode fails | The previous iteration's outputs remain. Start `lit-scout` by hand with `previous_draft_path` and `previous_corrections_path` pointing at them |
 | The verifier errors | Step D returns an error or malformed output | The iteration's `draft.md` is kept: verify it with the `lit-scout-verify` command |
 | No corrections block | Step F produces an empty file | Treat it as a verifier failure: show the verifier's own output, and don't iterate |
+| Unreadable verdicts | The count in Step G exits with an error | The same: show the verifier's own output, say that its verdicts could not be read, and don't report PASS |
 | Limit reached | Status `CAP_REACHED` | Look at the remaining failed claims and their fix hints: the proposer may be unable to satisfy the verifier on those rows |
 | Stall | Status `NO_PROGRESS` | As for the limit, but sooner. Often a sign of an ambiguous fix hint, or a metadata API returning inconsistent results |
 | BibTeX errors | The BibTeX step fails | Note it in the output; still return the integrated report |

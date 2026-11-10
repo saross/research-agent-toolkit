@@ -55,13 +55,12 @@ the no-progress tracker: `LAST_FAIL_SET=""`.
 
 ### Extraction helper
 
+The plugin's helper takes the input file, the marker, and the output
+file. It ignores leading indentation, exits with an error when it finds
+no block, and then leaves the output file empty:
+
 ```bash
-extract_block() {
-  # Args: input_file marker output_file
-  awk "/<!-- BEGIN $2 -->/,/<!-- END $2 -->/" "$1" \
-    | sed -n '/^```jsonl/,/^```$/{/^```/d; p}' \
-    > "$3"
-}
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract INPUT_FILE MARKER OUTPUT_FILE
 ```
 
 Use twice per iteration: marker `claims.jsonl` on the proposer's
@@ -100,8 +99,9 @@ Write the proposer's full return to `${ITERATE_ROOT}/iter-${N}/draft.md`.
 #### Step C — Extract claims
 
 ```bash
-extract_block "${ITERATE_ROOT}/iter-${N}/draft.md" "claims.jsonl" \
-              "${ITERATE_ROOT}/iter-${N}/claims.jsonl"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract \
+  "${ITERATE_ROOT}/iter-${N}/draft.md" "claims.jsonl" \
+  "${ITERATE_ROOT}/iter-${N}/claims.jsonl"
 ```
 
 If `claims.jsonl` is empty / malformed: the verifier handles this
@@ -130,20 +130,29 @@ Write the verifier's full return to `${ITERATE_ROOT}/iter-${N}/report.md`.
 #### Step F — Extract corrections
 
 ```bash
-extract_block "${ITERATE_ROOT}/iter-${N}/report.md" "corrections.jsonl" \
-              "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract \
+  "${ITERATE_ROOT}/iter-${N}/report.md" "corrections.jsonl" \
+  "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
 ```
 
 #### Step G — Read the verdict
 
 ```bash
-PASS_CT=$(grep -c '"status":"pass"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-PARTIAL_CT=$(grep -c '"status":"partial"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-FAIL_CT=$(grep -c '"status":"fail"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-UNVER_CT=$(grep -c '"status":"unverifiable"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-DOCDEF_CT=$(grep -c '"status":"documentation_defect"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
-LEGACY_CT=$(grep -c '"claim_id":"_legacy"' "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" || true)
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" count \
+  "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
 ```
+
+The helper parses every line and prints `PASS_CT`, `PARTIAL_CT`,
+`FAIL_CT`, `UNVER_CT`, `DOCDEF_CT`, `LEGACY_CT`, `INVALID_CT`, and
+`TOTAL_CT` as `NAME=value` lines, then `FAIL_SET`, the failed
+`claim_id`s. Use those values below. Don't count by searching the file
+for text: a verdict written with different spacing would be missed, and
+a run with failed claims would look like a pass.
+
+**If the helper exits with an error** (`INVALID_CT` above zero, or no
+verdicts at all), the verdict can't be trusted. Don't treat it as PASS
+and don't iterate: stop, show the verifier's own output, and say that
+its corrections block could not be read.
 
 Four cases:
 
@@ -164,11 +173,8 @@ Terminate with status `LEGACY_PROPOSER`.
 
 #### Step H — No-progress check
 
-```bash
-CURRENT_FAIL_SET=$(grep -E '"status":"fail"' \
-  "${ITERATE_ROOT}/iter-${N}/corrections.jsonl" \
-  | python3 -c "import sys,json; print(' '.join(sorted(json.loads(l)['claim_id'] for l in sys.stdin)))")
-```
+Take `CURRENT_FAIL_SET` from the `FAIL_SET` line that the count in Step G
+printed for this iteration.
 
 If `CURRENT_FAIL_SET == LAST_FAIL_SET` and `N > 0`, terminate
 `NO_PROGRESS`. Otherwise: `LAST_FAIL_SET = CURRENT_FAIL_SET`,
