@@ -44,24 +44,25 @@ Core invariants (don't weaken them in orchestration):
 ## Step 0: parameters
 
 Gather these before anything runs. Ask only for what you can't infer
-from the repository.
+from the repository. The panel reviews LaTeX (`.tex`) only; for any other
+format, say so and stop.
 
 | Parameter | Default and notes |
 | --- | --- |
 | `targets` | Section `.tex` file(s), as absolute paths |
 | `repo` | The paper repository's root |
 | `stance` | `critical-friend`. **`adversarial` is for drafts the author considers done.** Reviewer 2 on still-forming prose is premature; confirm with the user before using it |
-| `scope` | `section` (one target) or `paper` (all sections) |
+| `scope` | `section` (one target) or `paper` (all sections, in the order the main `.tex` file includes them) |
 | bibliography and aux | Pre-pass `--bib` and `--aux`, for citation resolution and label sanity. Also pass the `.bib` list to the workflow as `bibPaths` |
 | spelling language | Pre-pass `--spell-lang`, an aspell dictionary code. Take it from the user's stated language conventions (for example `en_GB`, `en_AU`, `en_US`); without one, aspell uses its own default |
-| word budget, dash tokens | Repository conventions, if any: pre-pass `--word-budget` and `--dash-token` (not workflow arguments) |
+| word budget, dash tokens | Repository conventions, if any: pre-pass `--word-budget`, and `--dash-token` for a compound that must keep its double hyphen, such as `human--AI` (not workflow arguments) |
 | `sourceNotesDir` | Optional. A folder of source notes, one file per cited work, named by its citekey and holding verbatim quotes from that work. The source-fidelity lens checks cited claims against them; without them, it marks every cited claim "unverifiable" at minor severity rather than guess |
 | `constraints` | Optional hard constraints (banned words, date rules, citekeys that must stay). Turns on the constraints lens |
 | `paperBrief` | Three to six lines on what the paper argues (static context) |
 | `model` | `opus`, an alias for the current Opus-class model, unless the user chooses otherwise at the gate. Pass a full model ID to pin one exactly |
 | `readOnlyContext` | Optional. Extra paths lenses may consult (supplements, appendices) |
 | `lensSet` | Optional. A subset of lens keys to run (`source-fidelity`, `consistency`, `calibration`, `completeness`, `constraints`, `voice`); an unknown or unconfigured key fails at once |
-| `voice` and `voiceReference` | Off by default; for final polish only. `voiceReference` is the path to the author's register |
+| `voice` and `voiceReference` | Off by default; for final polish only. `voiceReference` is the path to the author's register (the `academic_register` option's file if set, or this plugin's `registers/academic.md`) |
 
 **Settled rulings.** An author can record decisions the panel must not
 re-open in a LaTeX comment block in the section itself: a run of `%`
@@ -75,13 +76,15 @@ blocks are checked for staleness.
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/review-paper-prepass.py" \
   --repo <repo> --target <repo-relative path> [--target ...] \
-  --bib '<glob>' --aux <repo-relative .aux> [--spell-lang en_GB] \
+  [--bib '<glob>'] [--aux <repo-relative .aux>] [--spell-lang en_GB] \
   [--word-budget N] [--dash-token 'human--AI'] [--build-cmd 'latexmk ...'] \
   --json-out <a scratch folder of this session's own>/prepass.json
 ```
 
-Present its findings to the author at once: they are free, and often
-actionable without any agent run. The JSON also yields:
+Leave out `--bib` or `--aux` if the paper has none (an `.aux` exists only
+after a build); the checks that need them are skipped and say so. Present
+its findings to the author at once: they are free, and often actionable
+without any agent run. The JSON also yields:
 
 - `findings`: pass these verbatim as `prepassFindings` (they join the
   verdict);
@@ -149,9 +152,9 @@ fix would have broken correct text. Before the report ships:
    hijacking, placeholder, semantic drift; arXiv 2602.05930), and keep the
    kill list in the report. It is the panel's calibration record.
 3. Convergence (`converged: true`) raises priority, never the verdict.
-   On a section of a page or less it marks most findings and says
-   little: rank by distinct issues more than one lens raised, and say
-   so.
+   On a short section nearly every finding converges, so the flag
+   doesn't discriminate: rank instead by how many lenses raised each
+   distinct issue, and tell the author.
 4. Drop, and list with the kills, any finding, note, blind spot, or
    strength that draws on the user's own instructions or memory rather
    than the artefacts, or that rests on an unresolved citation or a
@@ -172,7 +175,8 @@ and show the result in `provisional` only under that name, until the
 failed stages are re-run. Present what the author must act on in three
 tiers:
 
-1. **Act-now mechanical batch:** pre-authorised, no per-item review.
+1. **Mechanical batch:** fixes the author can approve as a group, with
+   no per-item review. Nothing is applied until the author says apply.
 2. **Rulings needed:** before-and-after snippets with one line of context
    each, reviewable in the conversation without opening the file.
 3. **Standing rulings honoured:** re-flagged items already ruled on;
@@ -190,26 +194,28 @@ in `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`).
   by hand-editing at volume.
 - **Re-read the target immediately before applying.** Authors edit
   between the review and the apply.
-- **Gate commits on a successful build** (`&&`, never `;`).
+- **Commit only if the author asks**, and if the repository has a build
+  command, only after it succeeds (`&&`, never `;`).
 
 ## Calibration gate: the hedging stress test
 
 Language-model reviewers systematically underrate prose with hedging,
 risk, and limitation language (LLM-REVal, arXiv 2510.12367), which is
 the register careful humanities and social-science writing uses. The
-calibration lens carries a guard against this, but the guard must be
-tested, not trusted:
+calibration lens carries a guard against this, but the guard has to be
+tested, not trusted.
 
-- **When:** before the adversarial stance's first real use, and after any
-  change to the stance preambles or the calibration lens.
-- **How:** run the adversarial panel over a known-good, peer-reviewed,
-  deliberately hedged section (the author nominates it). **Pass:** no
-  finding flags a calibrated hedge as weakness, and any finding about a
-  hedge shows real mis-calibration with evidence. **Fail:** tighten the
-  calibration guard and re-test before trusting adversarial output.
-- Record the result (date, target, verdict) where the project keeps its
-  notes.
+Before the first adversarial run in a project, look for a record of the
+test in the folder where reviews are written (`calibration-*.md`). If
+there is none, tell the author, and offer the test first: an adversarial
+run over a known-good, peer-reviewed, deliberately hedged section that
+they nominate. **Pass:** no finding treats a calibrated hedge as a
+weakness, and any finding about a hedge shows real mis-calibration with
+evidence. **Fail:** say that the plugin's guard needs fixing, and don't
+present adversarial findings about hedging as reliable. Either way,
+write `calibration-<YYYY-MM-DD>.md` there with the target, the verdict,
+and the plugin version.
 
 ## After the run
 
-Note the measured cost against the table in Step 2.
+Tell the author the run's actual token use beside the Step 2 estimate.
