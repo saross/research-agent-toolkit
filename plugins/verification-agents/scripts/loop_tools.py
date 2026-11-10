@@ -12,7 +12,7 @@ the command text and went wrong in practice.
 
     loop_tools.py count LOOP CORRECTIONS
         Count the verifier's verdicts by status and state the outcome.
-        LOOP is `lit-scout` or `prior-art`.
+        LOOP is `lit-scout`, `prior-art`, or `data-profile`.
 
 Why they are a script and not shell in the command file:
 
@@ -40,8 +40,8 @@ read:
     PASS_CT, PARTIAL_CT, FAIL_CT   verdicts with that status
     UNVER_CT                       `unverifiable`, leaving out the legacy
                                    placeholder
-    DOCDEF_CT                      `documentation_defect` (a status only the
-                                   prior-art verifier uses)
+    DOCDEF_CT                      `documentation_defect`; not printed for
+                                   lit-scout, whose verifier doesn't use it
     LEGACY_CT                      the `_legacy` placeholder
     INVALID_CT                     lines that aren't a verdict: not a JSON
                                    object, a repeated key, no `claim_id`, a
@@ -77,6 +77,7 @@ from pathlib import Path
 LOOPS = {
     "lit-scout": ("pass", "partial", "fail", "unverifiable"),
     "prior-art": ("pass", "partial", "fail", "unverifiable", "documentation_defect"),
+    "data-profile": ("pass", "partial", "fail", "unverifiable", "documentation_defect"),
 }
 COUNT_NAMES = {
     "pass": "PASS_CT", "partial": "PARTIAL_CT", "fail": "FAIL_CT",
@@ -152,7 +153,7 @@ def count_verdicts(text: str, loop: str) -> dict[str, int | str]:
 
     Args:
         text: The file's contents.
-        loop: `lit-scout` or `prior-art`; decides which statuses are valid.
+        loop: One of `LOOPS`; decides which statuses are valid.
 
     Returns:
         The counts, the failed set, and the verdict described in the module
@@ -221,6 +222,8 @@ def main(argv: list[str]) -> int:
             text = ""
         result = count_verdicts(text, argv[2])
         for name, value in result.items():
+            if name == "DOCDEF_CT" and "documentation_defect" not in LOOPS[argv[2]]:
+                continue  # a count this loop's command doesn't know about
             print(f"{name}={value}")
         if result["VERDICT"] == "INVALID":
             print(f"loop_tools: the verdicts in {path} can't be relied on", file=sys.stderr)
@@ -228,7 +231,7 @@ def main(argv: list[str]) -> int:
         return 0
     print(
         "usage: loop_tools.py extract INPUT MARKER OUTPUT\n"
-        "       loop_tools.py count {lit-scout|prior-art} CORRECTIONS",
+        "       loop_tools.py count {lit-scout|prior-art|data-profile} CORRECTIONS",
         file=sys.stderr,
     )
     return 2

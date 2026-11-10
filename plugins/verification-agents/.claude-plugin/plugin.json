@@ -1,7 +1,7 @@
 {
   "name": "verification-agents",
   "displayName": "Verification agents",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Proposer and verifier agent pairs for research: literature scouting with citation chaining, prior-art discovery, and dataset profiling, each checked by an independent adversarial verifier.",
   "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },
   "repository": "https://github.com/saross/research-agent-toolkit",
@@ -17,6 +17,11 @@
       "type": "string",
       "title": "Library import command",
       "description": "Optional. A command that takes a finished lit-scout-iterate run folder as its one argument, imports the papers listed in its verified-claims.jsonl into your reference library, and prints a Markdown summary. Leave empty to skip the import."
+    },
+    "verification_log_command": {
+      "type": "string",
+      "title": "Verification log command",
+      "description": "Optional. A command run after each verifier finishes, given three arguments: the verifier's name, the path to its verdicts file (corrections.jsonl), and a short run label. For keeping your own record of how often verification finds faults. Leave empty to skip."
     }
   }
 }

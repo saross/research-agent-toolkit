@@ -51,7 +51,9 @@ configuration.
 
 The literature scout can check what you already hold, and import what it finds, through two
 commands of your own. Both are plugin options, both are off until you set them, and the plugin
-ships no reference-manager code: you point it at a script that knows your library.
+ships no reference-manager code: you point it at a script that knows your library. A third
+option, described below under "Optional: keep a verification log", records what the verifiers
+find.
 
 | Option | The command is given | The command prints |
 | --- | --- | --- |
@@ -115,6 +117,26 @@ trust; this is not a sandbox. What your scripts print goes into the agent's cont
 report as text, and the agents are told to treat it as data, not instructions. An unset option
 needs Claude Code to leave its placeholder in the text or to fill it with nothing, which is how
 version 2.1.322 behaves; the agents treat either as "not set".
+
+### Optional: keep a verification log
+
+Set `verification_log_command` to a command of your own, and each closed-loop or single-round
+command runs it after every verifier finishes, with three arguments: the verifier's name
+(`lit-scout-verifier`, `prior-art-scout-verifier`, or `data-profile-verifier`), the path to that
+run's `corrections.jsonl`, and a short label made from a folder or file name (never your
+query). Each line of `corrections.jsonl` is one checked claim, with its `status` and, for a
+failure, a `failure_type` such as `confabulation`. Counting those over time tells you how often
+the first agent's claims fail checking, which is the evidence for whether verification is
+earning its cost in your own work. A failure of this command never changes a run's verdict.
+
+### Optional: run a dataset profile on another machine
+
+The dataset profiler can run its Python on another machine over SSH, with git carrying the
+script there and the results back. Give `remote_exec: {host, workdir, venv_python}` in the
+configuration you pass to `/verification-agents:data-profile-iterate`. The repository must
+already be cloned on that machine, and the profiler commits and pushes on your current branch,
+so use it in a repository where that is what you want. The verifier still runs on this machine,
+so the dataset must be readable here as well.
 
 ## Why verification first
 

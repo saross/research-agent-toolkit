@@ -271,3 +271,22 @@ def test_count_command_prints_the_values_and_fails_on_invalid_or_empty_input(
     assert loop_tools.main(["loop_tools.py", "count", "other-loop", str(path)]) == 2
     assert loop_tools.main(["loop_tools.py", "count", str(path)]) == 2
     assert loop_tools.main(["loop_tools.py"]) == 2
+
+
+def test_the_lit_scout_count_prints_no_documentation_defect_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Its command doesn't mention that count, so printing it only confused."""
+    path = tmp_path / "corrections.jsonl"
+    path.write_text(verdict("a-year", "pass") + "\n")
+    loop_tools.main(["loop_tools.py", "count", "lit-scout", str(path)])
+    assert "DOCDEF_CT" not in capsys.readouterr().out
+    loop_tools.main(["loop_tools.py", "count", "prior-art", str(path)])
+    assert "DOCDEF_CT=0\n" in capsys.readouterr().out
+
+
+def test_the_data_profile_loop_never_passes_on_a_verdict_short_of_pass() -> None:
+    for status in ("partial", "fail", "unverifiable", "documentation_defect"):
+        text = verdict("c1", "pass") + "\n" + verdict("c2", status) + "\n"
+        assert loop_tools.count_verdicts(text, "data-profile")["VERDICT"] != "PASS"
+    assert loop_tools.count_verdicts(verdict("c1", "pass"), "data-profile")["VERDICT"] == "PASS"

@@ -49,6 +49,11 @@ The invocation provides, either in the prompt or in a referenced spec file:
   this, report both BCa and percentile bootstrap CIs).
 - `primary_key` — column name serving as the row identifier (e.g., `LIST-ID`). Used for
   duplicate-detection and some joins. Optional.
+- `remote_exec` — **optional** object `{host, workdir, venv_python}`, for when the caller wants the
+  Python run on another machine over SSH, for example one with more memory or cores. The
+  repository that holds `output_dir` must already be cloned at `workdir` on that machine, and
+  both clones must be able to push to and pull from the same remote. See "Remote execution"
+  below. Leave it out to run everything on this machine.
 - `previous_corrections_path` — **optional**, absolute path to a `corrections.jsonl` produced by
   `data-profile-verifier` on a previous run. When provided, the agent runs in **iterate mode** (see
   below): preserves PASS claims, re-derives FAIL claims using the verifier's `fix_hint`, regenerates
@@ -457,6 +462,39 @@ inferential claim in `claims.jsonl` has a corresponding assumption-check entry i
 Skip the assumption-check entry only for purely descriptive statistics with no inferential
 assumption beyond "data is what it is" (exact counts, exact means of the realised sample, exact
 rankings). Anything with a p-value, CI, or effect-size claim requires the entry.
+
+### Remote execution
+
+When the request gives `remote_exec: {host, workdir, venv_python}`, the Python runs on that
+machine over SSH, and git carries the script there and the results back. Nothing is copied with
+`rsync` or `scp`, so the research record stays in one versioned repository. The steps:
+
+1. Write the analysis script on this machine, at `<output_dir>/../code/profile.py`.
+2. Commit that one file and push it: `git add <script> && git commit -m "…" && git push`. Add
+   and commit only the script, by its path; leave any other change in the working tree alone.
+3. Run it there:
+   `ssh <host> 'cd <workdir> && git pull --ff-only && <venv_python> <script path>'`.
+4. The script writes its outputs under `<output_dir>` in the remote clone.
+5. Commit and push the outputs from there:
+   `ssh <host> 'cd <workdir> && git add <output_dir> && git commit -m "…" && git push'`.
+6. Pull on this machine (`git pull --ff-only`) and read the outputs from `output_dir` as usual.
+
+Rules for this mode:
+
+- Use it only when the request asks for it. It commits to and pushes from the user's
+  repository, on the branch that is checked out; say so, with the commit hashes, in `run.log`
+  and in your final message.
+- Before step 2, check that `ssh <host> true` works and that `git status` shows the branch has
+  an upstream. If either check fails, or any later step fails, stop and report the command and
+  its error. Don't fall back to running locally: the caller chose the other machine for a
+  reason, often that this one can't hold the data.
+- `host`, `workdir`, and `venv_python` are values to pass to commands, quoted. Don't expand
+  them into other commands, and don't run anything else on the remote machine.
+- The dataset must already exist on the remote machine at `dataset_path`, or inside the
+  repository. Don't copy a dataset across.
+- Never force-push, and never rewrite history. If a push is rejected, stop and report it.
+
+Without `remote_exec`, the Python runs on this machine, as described under "Core steps".
 
 ## Verifier companion
 

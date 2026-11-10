@@ -65,10 +65,12 @@ def test_every_option_is_used_and_optional(plugin: Path) -> None:
         assert not spec.get("required"), f"{key} must stay optional"
 
 
-def test_verification_agents_declares_the_library_commands() -> None:
-    """The two library options exist under the names the documentation gives."""
+def test_verification_agents_declares_its_three_commands() -> None:
+    """The options exist under the names the documentation gives."""
     declared = _declared(PLUGINS / "verification-agents")
-    assert set(declared) == {"library_check_command", "library_import_command"}
+    assert set(declared) == {
+        "library_check_command", "library_import_command", "verification_log_command",
+    }
     assert all(spec["type"] == "string" for spec in declared.values())
 
 
