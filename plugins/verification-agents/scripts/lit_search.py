@@ -1388,11 +1388,16 @@ def cmd_bibtex(
     holds the DOI. Until 0.3.1 only CrossRef was asked, and a table of
     preprints came back almost empty while the command still succeeded.
 
+    A source's answer counts only if it holds a complete bibliographic
+    record (see `_bibtex_record`); any failure of the first source (an
+    error status, a connection error after its retries, or an answer that is
+    not a record) moves on to the next.
+
     Returns concatenated BibTeX entries as a single string. A DOI with no
-    entry leaves a `% FAILED` comment in its place and does not abort the
-    run. A closing line on standard error says how many DOIs produced an
-    entry and names the ones that did not, so that a short file is not
-    mistaken for a complete one.
+    entry leaves a `% FAILED` comment in its place, naming why each source
+    failed, and does not abort the run. A closing line on standard error
+    says how many DOIs produced an entry and names the ones that did not,
+    so that a short file is not mistaken for a complete one.
     """
     entries: list[str] = []
     # Separate client for BibTeX content negotiation — different Accept header
@@ -1406,57 +1411,17 @@ def cmd_bibtex(
     missing: list[str] = []
 
     for doi in dois:
-        encoded = urllib.parse.quote(doi, safe='')
-        url = f"{CROSSREF_BASE}/works/{encoded}/transform/application/x-bibtex"
-        # Pacing + retry now flow through the shared helper, so a batch of
-        # many DOIs is paced across the whole run (all hit api.crossref.org)
-        # and a transient 429/5xx on one DOI is retried with backoff before
-        # falling back to the same "% FAILED" marker as before.
-        try:
-            resp = _request_with_retry(
-                lambda u=url: client.get(u, headers=bibtex_headers),
-                host=_host_of(url),
-                source="crossref",
-            )
-            if resp.status_code != 200:
-                # Not a CrossRef DOI, most likely: ask the DOI resolver,
-                # which sends the request on to the registry that holds it.
-                resolver = f"{DOI_RESOLVER}/{urllib.parse.quote(doi, safe='/')}"
-                resp = _request_with_retry(
-                    lambda u=resolver: client.get(
-                        u, headers=bibtex_headers, follow_redirects=True
-                    ),
-                    host=_host_of(resolver),
-                    source="doi.org",
-                )
-            if resp.status_code != 200:
-                log.warning(
-                    "bibtex: HTTP %d for DOI %s", resp.status_code, doi
-                )
-                entries.append(
-                    f"% FAILED: {doi} (HTTP {resp.status_code})\n"
-                )
-                missing.append(doi)
-                continue
-            entry = resp.text.strip()
-            if entry.startswith("@"):
-                entry = _dedupe_bibtex_key(entry, seen_keys)
-                entries.append(entry)
-                log.info("bibtex: generated entry for %s", doi)
-            elif entry:
-                # A registry that does not offer BibTeX answers the resolver
-                # with its landing page and status 200. That is not an entry
-                # and must not be written into the file as one.
-                log.warning("bibtex: the answer for DOI %s is not BibTeX", doi)
-                entries.append(f"% FAILED: {doi} (the registry did not return BibTeX)\n")
-                missing.append(doi)
-            else:
-                entries.append(f"% EMPTY RESPONSE: {doi}\n")
-                missing.append(doi)
-        except httpx.HTTPError as exc:
-            log.warning("bibtex: request failed for %s: %s", doi, _redact(str(exc)))
-            entries.append(f"% FAILED: {doi} ({_redact(str(exc))})\n")
-            missing.append(doi)
+        # One validation drives both the file and the count: a DOI counts as
+        # produced only when a source returned a complete bibliographic record.
+        record, reasons = _fetch_bibtex_record(doi, client, bibtex_headers)
+        if record is not None:
+            entries.append(_dedupe_bibtex_key(record, seen_keys))
+            log.info("bibtex: generated entry for %s", doi)
+            continue
+        why = "; ".join(reasons) or "no source answered"
+        log.warning("bibtex: no entry for DOI %s (%s)", doi, why)
+        entries.append(f"% FAILED: {doi} ({why})\n")
+        missing.append(doi)
 
     # Always said, at warning level so it shows whatever the log level: the
     # exit status is 0 even when entries are missing.
@@ -1478,7 +1443,129 @@ def cmd_bibtex(
 
 
 #: The citation key of a BibTeX entry: "@type{key," on the opening line.
-_BIBTEX_KEY = re.compile(r"^(@\w+\s*\{)([^,]+)(,)", re.MULTILINE)
+_BIBTEX_KEY = re.compile(r"^(@\w+\s*[{(])([^,]+)(,)", re.MULTILINE)
+
+#: Entry types that are BibTeX directives, not bibliographic records.
+_BIBTEX_DIRECTIVES = frozenset({"comment", "string", "preamble"})
+#: The opening of an entry: "@type{" or "@type(".
+_BIBTEX_OPEN = re.compile(r"@\s*([A-Za-z]+)\s*([{(])")
+#: A citation key and the comma after it, at the start of an entry's body.
+_BIBTEX_CITE_KEY = re.compile(r"\s*([^\s,{}()=\"#%]+)\s*,")
+
+
+def _bibtex_close(text: str, start: int, opener: str) -> int | None:
+    """
+    Return the index just past the delimiter closing an entry, or None.
+
+    ``start`` is the first character after the entry's opening delimiter.
+    Braces inside the entry must balance, as BibTeX itself requires; an entry
+    opened with "(" closes at the first ")" outside any braces.
+    """
+    depth = 0
+    for i in range(start, len(text)):
+        char = text[i]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            if depth == 0:
+                return i + 1 if opener == "{" else None
+            depth -= 1
+        elif char == ")" and opener == "(" and depth == 0:
+            return i + 1
+    return None
+
+
+def _bibtex_record(text: str) -> str | None:
+    """
+    Return the first complete bibliographic record in ``text``, or None.
+
+    A deliberately limited grammar (review finding R22, 0.3.1): a status 200
+    is not enough, and nor is a leading "@". Before the record only
+    whitespace, "%" comment lines, and the directives @comment, @string, and
+    @preamble may appear; they are skipped. Any other text first (an HTML
+    page, for one) means the answer is not BibTeX. The record itself must be
+    "@type{key, name = value, ...}" (or with parentheses): a citation key
+    followed by a comma, at least one field, and balanced braces up to the
+    closing delimiter. A directive alone, a lone "@", or a record cut off
+    before its closing brace is not a record.
+    """
+    pos, size = 0, len(text)
+    while pos < size:
+        char = text[pos]
+        if char.isspace():
+            pos += 1
+            continue
+        if char == "%":
+            newline = text.find("\n", pos)
+            pos = size if newline == -1 else newline + 1
+            continue
+        match = _BIBTEX_OPEN.match(text, pos)
+        if match is None:
+            return None
+        kind, opener = match.group(1).lower(), match.group(2)
+        end = _bibtex_close(text, match.end(), opener)
+        if end is None:
+            return None
+        if kind in _BIBTEX_DIRECTIVES:
+            pos = end
+            continue
+        body = text[match.end():end - 1]
+        key = _BIBTEX_CITE_KEY.match(body)
+        if key is None or "=" not in body[key.end():]:
+            return None
+        return text[match.start():end]
+    return None
+
+
+def _fetch_bibtex_record(
+    doi: str, client: httpx.Client, headers: dict[str, str]
+) -> tuple[str | None, list[str]]:
+    """
+    Ask CrossRef, then the DOI resolver, for one DOI's BibTeX record.
+
+    Returns the first accepted record (or None) and, for each source that
+    failed, a short reason. Every kind of failure moves on to the next
+    source (review finding R23, 0.3.1): before, a CrossRef connection error
+    that outlasted its retries skipped the resolver altogether. Each source
+    keeps its own bounded retries through ``_request_with_retry``.
+    """
+    crossref = (
+        f"{CROSSREF_BASE}/works/{urllib.parse.quote(doi, safe='')}"
+        "/transform/application/x-bibtex"
+    )
+    # The resolver forwards to whichever registry holds the DOI (DataCite
+    # for arXiv and Zenodo, among others).
+    resolver = f"{DOI_RESOLVER}/{urllib.parse.quote(doi, safe='/')}"
+    sources = (
+        ("CrossRef", crossref, "crossref", False),
+        ("doi.org", resolver, "doi.org", True),
+    )
+    reasons: list[str] = []
+    for label, url, source, follow in sources:
+        try:
+            if follow:
+                def request(u: str = url) -> httpx.Response:
+                    return client.get(u, headers=headers, follow_redirects=True)
+            else:
+                def request(u: str = url) -> httpx.Response:
+                    return client.get(u, headers=headers)
+            resp = _request_with_retry(request, host=_host_of(url), source=source)
+        except httpx.HTTPError as exc:
+            reasons.append(f"{label}: " + _redact(str(exc)).replace("\n", " "))
+            continue
+        if resp.status_code != 200:
+            reasons.append(f"{label}: HTTP {resp.status_code}")
+            continue
+        text = resp.text or ""
+        record = _bibtex_record(text)
+        if record is None:
+            reasons.append(
+                f"{label}: " + ("empty response" if not text.strip()
+                                else "no complete BibTeX record")
+            )
+            continue
+        return record, reasons
+    return None, reasons
 
 
 def _dedupe_bibtex_key(entry: str, seen: set[str]) -> str:

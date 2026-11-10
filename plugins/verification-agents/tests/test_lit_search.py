@@ -1819,7 +1819,7 @@ class TestBibtexBeyondCrossref:
         })
         with caplog.at_level("WARNING"):
             result = lit_search.cmd_bibtex(["10.1/good", "10.9/absent"], client)
-        assert "% FAILED: 10.9/absent (HTTP 404)" in result
+        assert "% FAILED: 10.9/absent (CrossRef: HTTP 404; doi.org: HTTP 404)" in result
         assert "1 of 2 DOIs produced an entry; none for: 10.9/absent" in caplog.text
 
     @patch.object(lit_search, "_rate_limit")
@@ -1839,5 +1839,98 @@ class TestBibtexBeyondCrossref:
         with caplog.at_level("WARNING"):
             result = lit_search.cmd_bibtex(["10.5555/no-bibtex"], client)
         assert "<html" not in result
-        assert "% FAILED: 10.5555/no-bibtex (the registry did not return BibTeX)" in result
+        assert ("% FAILED: 10.5555/no-bibtex (CrossRef: HTTP 404; "
+                "doi.org: no complete BibTeX record)") in result
         assert "0 of 1 DOIs produced an entry; none for: 10.5555/no-bibtex" in caplog.text
+
+
+class TestBibtexRecordValidation:
+    """Review finding R22 (0.3.1): only a complete bibliographic record counts.
+
+    A status 200 whose body merely starts with "@" was written to the file
+    and counted as an entry, including BibTeX directives and records cut
+    off before their closing brace.
+    """
+
+    @pytest.mark.parametrize("text", [
+        "@comment{No entry is available}",
+        '@string{journal = "Example"}',
+        '@preamble{"Example"}',
+        "@",
+        "@article{broken, title={Synthetic}",
+        "@article{nofields}",
+        "@article{, title={No key}}",
+        "<!DOCTYPE html><html><body>@article{x, title={y}}",
+        "% @article{commented, title={Out}}",
+        "",
+    ])
+    def test_not_a_record(self, text):
+        assert lit_search._bibtex_record(text) is None
+
+    @pytest.mark.parametrize("text, key", [
+        (SAMPLE_BIBTEX, "Walters_2023"),
+        ("% made by a registry\n@article{Lead_2020, title={Leading comment}}", "Lead_2020"),
+        ('@string{j = "J"}\n@article{After_2021, journal=j, title={x}}', "After_2021"),
+        ("@misc(Paren_2022, title={Parentheses {nested}})", "Paren_2022"),
+        ("  \n@Article{Case_2019,\n  title = {Mixed case}\n}\n", "Case_2019"),
+    ])
+    def test_a_record(self, text, key):
+        record = lit_search._bibtex_record(text)
+        assert record is not None and key in record
+        assert record.startswith("@")
+
+    @patch.object(lit_search, "_rate_limit")
+    def test_a_directive_from_both_sources_counts_as_missing(self, mock_rl, caplog):
+        client = TestBibtexBeyondCrossref._client({
+            lit_search.CROSSREF_BASE: (200, "@comment{No entry is available}"),
+            lit_search.DOI_RESOLVER: (200, "@article{broken, title={Synthetic}"),
+        })
+        with caplog.at_level("WARNING"):
+            result = lit_search.cmd_bibtex(["10.1/x"], client)
+        assert "@comment" not in result and "broken" not in result
+        assert "0 of 1 DOIs produced an entry; none for: 10.1/x" in caplog.text
+
+    @patch.object(lit_search, "_rate_limit")
+    def test_an_invalid_crossref_answer_falls_back_to_the_resolver(self, mock_rl):
+        client = TestBibtexBeyondCrossref._client({
+            lit_search.CROSSREF_BASE: (200, "@preamble{\"x\"}"),
+            lit_search.DOI_RESOLVER: (200, "@misc{Good_2024, title={From the resolver}}"),
+        })
+        result = lit_search.cmd_bibtex(["10.1/x"], client)
+        assert "Good_2024" in result and "FAILED" not in result
+        assert client.get.call_count == 2
+
+
+class TestBibtexFallbackAfterErrors:
+    """Review finding R23 (0.3.1): a CrossRef error must not skip the resolver."""
+
+    @patch("time.sleep")
+    @patch.object(lit_search, "_rate_limit")
+    def test_an_exhausted_crossref_connection_error_tries_the_resolver(
+        self, mock_rl, mock_sleep, caplog,
+    ):
+        def get(url, **kwargs):
+            if url.startswith(lit_search.CROSSREF_BASE):
+                raise httpx.ConnectError("refused")
+            response = MagicMock()
+            response.status_code = 200
+            response.text = "@misc{Datacite_2024, title={A DataCite record}}"
+            return response
+
+        client = MagicMock()
+        client.get.side_effect = get
+        with caplog.at_level("WARNING"):
+            result = lit_search.cmd_bibtex(["10.48550/arXiv.2409.13740"], client)
+        assert "Datacite_2024" in result and "FAILED" not in result
+        urls = [c.args[0] for c in client.get.call_args_list]
+        assert any(u.startswith(lit_search.DOI_RESOLVER) for u in urls)
+        assert "1 of 1 DOIs produced an entry" in caplog.text
+
+    @patch("time.sleep")
+    @patch.object(lit_search, "_rate_limit")
+    def test_errors_from_both_sources_are_both_named(self, mock_rl, mock_sleep):
+        client = MagicMock()
+        client.get.side_effect = httpx.ConnectError("refused")
+        result = lit_search.cmd_bibtex(["10.9999/oops"], client)
+        line = next(x for x in result.splitlines() if x.startswith("% FAILED"))
+        assert "CrossRef: refused" in line and "doi.org: refused" in line
