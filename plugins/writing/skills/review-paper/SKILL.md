@@ -153,7 +153,10 @@ fix would have broken correct text. Before the report ships:
    taxonomy (total fabrication, partial corruption, identifier
    hijacking, placeholder, semantic drift; arXiv 2602.05930), and keep the
    kill list in the report. It is the panel's calibration record.
-3. Convergence (`converged: true`) raises priority, never the verdict.
+3. Convergence (`converged: true`) raises priority, never the verdict. On a short
+   section (about a page or less), most findings share a line with another, and the
+   flag says little: rank by distinct issues that more than one lens raised instead,
+   and say so in the report.
 4. Check every strength you present in the same way. A strength that rests on an
    unresolved citation or a misread line could protect the wrong text: drop it, and
    list it with the kills.
