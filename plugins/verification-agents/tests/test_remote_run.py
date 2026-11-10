@@ -341,7 +341,9 @@ def test_a_stop_before_any_commit_says_nothing_was_committed(
     here, there = clones
     (there / "notes.txt").write_text("left over\n")
     assert transact(here, there, write_script(here)) == 1
-    assert "Nothing had been committed or pushed." in capfd.readouterr().err
+    err = capfd.readouterr().err
+    assert "Nothing had been committed or pushed." in err
+    assert "notes.txt" in err  # the leftover file is named
 
 
 # ---------------------------------------------------------------------------

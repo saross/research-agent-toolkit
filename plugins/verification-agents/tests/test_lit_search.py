@@ -891,7 +891,8 @@ class TestBibtex:
         good_resp.text = SAMPLE_BIBTEX
         bad_resp = MagicMock()
         bad_resp.status_code = 404
-        client.get.side_effect = [good_resp, bad_resp]
+        # The failing DOI is asked for twice: CrossRef, then the DOI resolver.
+        client.get.side_effect = [good_resp, bad_resp, bad_resp]
 
         result = lit_search.cmd_bibtex(
             ["10.1/good", "10.1/bad"], client
@@ -1764,3 +1765,66 @@ def test_title_and_subtitle_join_on_a_real_boundary(title, subtitle, expected):
     """Review finding R16: a suffix inside a word is not a repeated subtitle."""
     record = {"title": [title], "subtitle": [subtitle]}
     assert lit_search._normalise_crossref(record)["title"] == expected
+
+
+class TestBibtexBeyondCrossref:
+    """BibTeX for DOIs that CrossRef does not hold, and an honest count.
+
+    Found by a smoke test: six of eight DOIs were arXiv preprints, CrossRef
+    answered 404 for each, and the command reported success with a file of
+    two entries.
+    """
+
+    @staticmethod
+    def _client(answers):
+        """A client whose `get` answers by the start of the address."""
+        client = MagicMock()
+
+        def get(url, **kwargs):
+            response = MagicMock()
+            for prefix, (status, text) in answers.items():
+                if url.startswith(prefix):
+                    response.status_code, response.text = status, text
+                    return response
+            raise AssertionError(f"unexpected request: {url}")
+
+        client.get.side_effect = get
+        return client
+
+    @patch.object(lit_search, "_rate_limit")
+    def test_a_doi_crossref_does_not_hold_is_fetched_from_the_resolver(self, mock_rl):
+        client = self._client({
+            lit_search.CROSSREF_BASE: (404, ""),
+            lit_search.DOI_RESOLVER: (200, "@misc{Arxiv_2024, title={A preprint}}"),
+        })
+        result = lit_search.cmd_bibtex(["10.48550/arXiv.2409.13740"], client)
+        assert "Arxiv_2024" in result and "FAILED" not in result
+        resolver_call = client.get.call_args_list[-1]
+        assert resolver_call.args[0] == "https://doi.org/10.48550/arXiv.2409.13740"
+        assert resolver_call.kwargs["follow_redirects"] is True
+        assert resolver_call.kwargs["headers"]["Accept"] == "application/x-bibtex"
+
+    @patch.object(lit_search, "_rate_limit")
+    def test_the_resolver_is_not_asked_when_crossref_answers(self, mock_rl):
+        client = self._client({lit_search.CROSSREF_BASE: (200, SAMPLE_BIBTEX)})
+        lit_search.cmd_bibtex(["10.1038/s41598-023-41032-5"], client)
+        assert client.get.call_count == 1
+
+    @patch.object(lit_search, "_rate_limit")
+    def test_the_closing_line_counts_entries_and_names_the_missing(self, mock_rl, caplog):
+        client = self._client({
+            f"{lit_search.CROSSREF_BASE}/works/10.1%2Fgood": (200, SAMPLE_BIBTEX),
+            lit_search.CROSSREF_BASE: (404, ""),
+            lit_search.DOI_RESOLVER: (404, ""),
+        })
+        with caplog.at_level("WARNING"):
+            result = lit_search.cmd_bibtex(["10.1/good", "10.9/absent"], client)
+        assert "% FAILED: 10.9/absent (HTTP 404)" in result
+        assert "1 of 2 DOIs produced an entry; none for: 10.9/absent" in caplog.text
+
+    @patch.object(lit_search, "_rate_limit")
+    def test_the_closing_line_is_given_when_nothing_is_missing(self, mock_rl, caplog):
+        client = self._client({lit_search.CROSSREF_BASE: (200, SAMPLE_BIBTEX)})
+        with caplog.at_level("WARNING"):
+            lit_search.cmd_bibtex(["10.1/a", "10.1/b"], client)
+        assert "2 of 2 DOIs produced an entry" in caplog.text

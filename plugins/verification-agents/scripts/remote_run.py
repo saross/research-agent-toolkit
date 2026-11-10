@@ -367,8 +367,13 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
     there_origin, there_url, there_ref = upstream_of(branch, there)
     if there_ref != ref:
         raise Stop(f"the other clone's branch tracks {there_ref}, not {ref}")
-    if there(["status", "--porcelain=v1", "--untracked-files=all"]):
-        raise Stop("the other clone has uncommitted changes; nothing was committed")
+    there_status = there(["status", "--porcelain=v1", "--untracked-files=all"])
+    if there_status:
+        raise Stop(
+            "the other clone has uncommitted changes, listed below; nothing was committed. "
+            "A file left by an earlier run that its manifest did not list is the usual "
+            "cause: remove it there, or commit it, and run again.\n" + there_status
+        )
     if there(["rev-parse", "HEAD"]) != head:
         raise Stop(f"the other clone is not at {head[:12]}, the commit this one is at")
 

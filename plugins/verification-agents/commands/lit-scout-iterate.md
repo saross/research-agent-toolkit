@@ -360,7 +360,8 @@ listed below.)
 **Library import:** (only if a library import command ran: the heading
 "## Library import", then the command's output verbatim)
 **BibTeX file:** /tmp/lit-scout-iterate-bibtex-YYYYMMDD-HHMMSS.bib
-(N entries; import it into your reference manager)
+(N of M DOIs have an entry; import it into your reference manager.
+No entry for: [the DOIs, or "none"])
 ```
 
 #### Outcome-detail blocks
@@ -371,9 +372,11 @@ listed below.)
   exceeded but within the partial-tolerance band on K claims. No claim
   failed in this round, so nothing was sent back to the proposer. (If
   earlier rounds ran, add: "The table reflects the corrections applied in
-  the earlier rounds.") For each PARTIAL claim, the verifier's value is in
-  its corrected Findings table and in `true_value`; `claims.jsonl` still
-  holds the proposer's value. Review the divergences in
+  the earlier rounds.") For each PARTIAL claim, the verifier's own value
+  is the `true_value` of that claim in `corrections.jsonl`. The Findings
+  table may still show the proposer's value with a note, and
+  `claims.jsonl` still holds the proposer's value, so name each PARTIAL
+  claim here with both values. Review the divergences in
   `${ITERATE_ROOT}/iter-{N}/corrections.jsonl` and decide whether to (a)
   accept the report as-is, (b) re-invoke with a stricter tolerance, or (c)
   manually re-run on specific rows."
@@ -480,8 +483,13 @@ print('\n'.join(seen))
 "${CLAUDE_PLUGIN_ROOT}/scripts/lit-search" bibtex "${DOIS[@]}" > "$BIBTEX_PATH"
 ```
 
-If it fails, add a brief note to the output ("BibTeX generation failed:
-[reason]"), but still return the verified report.
+The helper exits successfully even when some DOIs produced no entry. Its
+last line on standard error says how many did ("N of M DOIs produced an
+entry") and names the rest. Give that count with the file's path, and
+list the DOIs with no entry: a file that is short of the table must not
+be presented as complete. If the helper itself fails, add a brief note to
+the output ("BibTeX generation failed: [reason]"), but still return the
+verified report.
 
 ## Examples
 

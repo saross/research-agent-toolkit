@@ -181,8 +181,13 @@ BIBTEX_PATH="/tmp/lit-scout-bibtex-$(date +%Y%m%d-%H%M%S).bib"
 "${CLAUDE_PLUGIN_ROOT}/scripts/lit-search" bibtex "DOI1" "DOI2" ... > "$BIBTEX_PATH"
 ```
 
-If it fails, add a brief note to the output ("BibTeX generation failed:
-[reason]"), but still return the verified report.
+The helper exits successfully even when some DOIs produced no entry. Its
+last line on standard error says how many did ("N of M DOIs produced an
+entry") and names the rest. Give that count with the file's path, and
+list the DOIs with no entry: a file that is short of the table must not
+be presented as complete. If the helper itself fails, add a brief note to
+the output ("BibTeX generation failed: [reason]"), but still return the
+verified report.
 
 ### Step 7: return the integrated output
 
@@ -197,7 +202,8 @@ paths at the end:
 **Verifier report (saved):** /tmp/lit-scout-verifier/report-YYYYMMDD-HHMMSS.md
 
 **BibTeX file:** /tmp/lit-scout-bibtex-YYYYMMDD-HHMMSS.bib
-(N entries; import it into your reference manager)
+(N of M DOIs have an entry; import it into your reference manager.
+No entry for: [the DOIs, or "none"])
 
 **Proposer draft (for resuming):** /tmp/lit-scout-drafts/draft-YYYYMMDD-HHMMSS.md
 ```

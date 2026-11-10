@@ -129,9 +129,10 @@ DOI for the row and note its arXiv origin, or keep the 10.48550 form and
 flag the published DOI in Status. Publication status is itself useful to
 the user.
 
-BibTeX caveat: `lit-search bibtex` declines 10.48550 DOIs, so an arXiv
-item's absence from a BibTeX export is expected, not an error. Reference
-managers can import arXiv items by arXiv ID.
+BibTeX: `lit-search bibtex` asks CrossRef first and then the DOI
+resolver, so arXiv and other DataCite DOIs normally get an entry too. Its
+last line on standard error says how many DOIs produced one and names any
+that did not.
 
 ### What the user already has (optional)
 

@@ -70,6 +70,8 @@ USER_AGENT = (
 
 # API base URLs
 CROSSREF_BASE = "https://api.crossref.org"
+#: The DOI resolver, which answers a BibTeX request for a DOI of any registry.
+DOI_RESOLVER = "https://doi.org"
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 OPENALEX_BASE = "https://api.openalex.org"
 
@@ -1377,12 +1379,20 @@ def cmd_bibtex(
     client: httpx.Client,
 ) -> str:
     """
-    Generate BibTeX entries for one or more DOIs via CrossRef content
-    negotiation.
+    Generate BibTeX entries for one or more DOIs.
 
-    Uses CrossRef's native BibTeX support (Accept: application/x-bibtex).
-    Returns concatenated BibTeX entries as a single string. Failed DOIs
-    are reported to stderr but do not abort the run.
+    CrossRef's own BibTeX service is tried first. It knows only DOIs that
+    CrossRef registered, so for any DOI it does not answer (an arXiv
+    preprint, a Zenodo record, and other DataCite DOIs) the DOI resolver at
+    doi.org is asked for BibTeX instead, which reaches whichever registry
+    holds the DOI. Until 0.3.1 only CrossRef was asked, and a table of
+    preprints came back almost empty while the command still succeeded.
+
+    Returns concatenated BibTeX entries as a single string. A DOI with no
+    entry leaves a `% FAILED` comment in its place and does not abort the
+    run. A closing line on standard error says how many DOIs produced an
+    entry and names the ones that did not, so that a short file is not
+    mistaken for a complete one.
     """
     entries: list[str] = []
     # Separate client for BibTeX content negotiation — different Accept header
@@ -1393,6 +1403,7 @@ def cmd_bibtex(
     #: Citation keys already emitted this run, so a collision can be
     #: suffixed rather than silently shadowing an earlier entry.
     seen_keys: set[str] = set()
+    missing: list[str] = []
 
     for doi in dois:
         encoded = urllib.parse.quote(doi, safe='')
@@ -1408,12 +1419,24 @@ def cmd_bibtex(
                 source="crossref",
             )
             if resp.status_code != 200:
+                # Not a CrossRef DOI, most likely: ask the DOI resolver,
+                # which sends the request on to the registry that holds it.
+                resolver = f"{DOI_RESOLVER}/{urllib.parse.quote(doi, safe='/')}"
+                resp = _request_with_retry(
+                    lambda u=resolver: client.get(
+                        u, headers=bibtex_headers, follow_redirects=True
+                    ),
+                    host=_host_of(resolver),
+                    source="doi.org",
+                )
+            if resp.status_code != 200:
                 log.warning(
                     "bibtex: HTTP %d for DOI %s", resp.status_code, doi
                 )
                 entries.append(
                     f"% FAILED: {doi} (HTTP {resp.status_code})\n"
                 )
+                missing.append(doi)
                 continue
             entry = resp.text.strip()
             if entry:
@@ -1422,9 +1445,22 @@ def cmd_bibtex(
                 log.info("bibtex: generated entry for %s", doi)
             else:
                 entries.append(f"% EMPTY RESPONSE: {doi}\n")
+                missing.append(doi)
         except httpx.HTTPError as exc:
             log.warning("bibtex: request failed for %s: %s", doi, _redact(str(exc)))
             entries.append(f"% FAILED: {doi} ({_redact(str(exc))})\n")
+            missing.append(doi)
+
+    # Always said, at warning level so it shows whatever the log level: the
+    # exit status is 0 even when entries are missing.
+    made = len(dois) - len(missing)
+    if missing:
+        log.warning(
+            "bibtex: %d of %d DOIs produced an entry; none for: %s",
+            made, len(dois), ", ".join(missing),
+        )
+    else:
+        log.warning("bibtex: %d of %d DOIs produced an entry", made, len(dois))
 
     return "\n\n".join(entries) + "\n"
 
