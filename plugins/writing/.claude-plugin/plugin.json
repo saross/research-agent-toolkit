@@ -1,0 +1,22 @@
+{
+  "name": "writing",
+  "displayName": "Writing",
+  "version": "0.1.0",
+  "description": "Drafting discipline for academic prose and email, with your own register loaded before any drafting, and a fresh-context review panel for paper drafts that computes its verdict from finding severities.",
+  "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },
+  "repository": "https://github.com/saross/research-agent-toolkit",
+  "license": "Apache-2.0",
+  "keywords": ["academic-writing", "peer-review", "style", "email", "verification"],
+  "userConfig": {
+    "academic_register": {
+      "type": "string",
+      "title": "Academic register",
+      "description": "Optional. Full path to your own academic prose register: a Markdown file setting out your voice, punctuation habits, and measured targets, which the academic-prose skill reads before it touches prose. Leave empty to use the generic register bundled with the plugin. A project's own register notes override either."
+    },
+    "email_register": {
+      "type": "string",
+      "title": "Email register",
+      "description": "Optional. Full path to your own email register: a Markdown file setting out how your emails are shaped, signed, and handed over, which the draft-email skill reads before it drafts. Leave empty to use the generic register bundled with the plugin."
+    }
+  }
+}
