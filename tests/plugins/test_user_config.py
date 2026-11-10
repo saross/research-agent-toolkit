@@ -91,3 +91,10 @@ def test_command_files_hold_no_positional_placeholders(command: Path) -> None:
     """
     found = POSITIONAL.findall(command.read_text())
     assert not found, f"positional placeholders in {command.name}: {sorted(set(found))}"
+
+
+def test_writing_declares_its_two_registers() -> None:
+    """The register options exist under the names the skills and README use."""
+    declared = _declared(PLUGINS / "writing")
+    assert set(declared) == {"academic_register", "email_register"}
+    assert all(spec["type"] == "string" for spec in declared.values())

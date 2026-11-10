@@ -18,6 +18,9 @@ rewritten for release so that they run without the author's private set-up. Expe
 | [`plugins/verification-agents`](plugins/verification-agents) | Proposer and verifier agent pairs: literature scouting with citation chaining, prior-art discovery, and dataset profiling. A second agent, in a fresh context, re-checks the first one's factual claims against authoritative sources: each row of a findings table (authors, title, DOI, citations; repositories and packages), and each key figure of a data profile. The literature scout's narrative synthesis is not verified |
 | [`plugins/research-gates`](plugins/research-gates) | Checkpoints: statistical power before scaling up (`phase-gate`), configuration audits before paid runs (`audit-config`), reviews of unattended pipelines (`pre-run-review`), implementation reviews (`review-implementation`), and two-lens code audits (`code-audit`) |
 | [`plugins/prompt-hardening`](plugins/prompt-hardening) | `improve-prompt`: strengthens a prompt against the model stopping at good enough |
+| [`plugins/writing`](plugins/writing) | Drafting discipline that loads your own register before any prose is touched: academic prose (`academic-prose`) and email (`draft-email`, which never sends). And `review-paper`, a panel of fresh-context reviewers for LaTeX paper drafts, constructive or adversarial, whose verdict is computed from the severity of the findings and never taken from any reviewer's opinion |
+| [`plugins/session-reflection`](plugins/session-reflection) | `reflect`: an end-of-session reflection protocol for research projects, with prioritised documents, a rotating prompt pool, a schema for surprising findings, and a register of the agent's own observations of the collaboration |
+| [`plugins/heritage-taxonomy`](plugins/heritage-taxonomy) | `entity-classifier`: classifies mentions of hotels, churches, halls, and other dual-nature entities in historical text as building, organisation, or both, for faceted taxonomies |
 | [`prompts`](prompts) | Six plain prompts that work with any capable model |
 | [`docs/methods`](docs/methods) | How the verification approach works, and the evidence for it |
 | [`guard`](guard) | A pre-push check and an agent hook that keep secrets and private material out of public repositories, and a watcher that reports what reaches them by other routes |
@@ -31,10 +34,13 @@ In Claude Code, add this repository as a plugin marketplace, then install the pl
 /plugin install verification-agents@research-agent-toolkit
 /plugin install research-gates@research-agent-toolkit
 /plugin install prompt-hardening@research-agent-toolkit
+/plugin install writing@research-agent-toolkit
+/plugin install session-reflection@research-agent-toolkit
+/plugin install heritage-taxonomy@research-agent-toolkit
 ```
 
-Plugin commands and agents are namespaced, so the literature scout runs as
-`/verification-agents:lit-scout`.
+Plugin commands, skills, and agents are namespaced, so the literature scout runs as
+`/verification-agents:lit-scout`, and the paper review as `/writing:review-paper`.
 
 **Requirements:**
 
@@ -43,9 +49,37 @@ Plugin commands and agents are namespaced, so the literature scout runs as
 - The prior-art scout works best with the GitHub CLI, `gh`, signed in.
 - Optionally, set `LIT_SCOUT_MAILTO` to your own email address. Scholarly APIs give identified
   callers higher rate limits.
+- `review-paper` needs Claude Code's Workflow tool (dynamic workflows, on paid plans; on Pro, turn
+  it on in `/config`). Its mechanical pre-pass needs only Python 3, and uses `aspell` and
+  `texcount` when they are installed.
 
 The agents take your field and language conventions from your `CLAUDE.md`, so they need no other
 configuration.
+
+### Optional: use your own registers
+
+`academic-prose` and `draft-email` read a register before they draft: a Markdown file that sets
+out how you write (voice, punctuation, sign-offs, measured targets) and the checks a draft must
+pass before it is handed to you. Each ships with a generic register,
+[`plugins/writing/registers`](plugins/writing/registers), distilled from one author's registers
+with the personal detail removed. It works as it is, but a register is personal by nature: copy
+one, make it yours, and point the plugin at your copy.
+
+| Option | Read by | Points at |
+| --- | --- | --- |
+| `academic_register` | `academic-prose` | Your academic register. A project's own register notes (files in its `.notes/` or `docs/` whose names mention register, prose, style, voice, or writing, or files its `CLAUDE.md` names) override it |
+| `email_register` | `draft-email` | Your email register. It can also set out how drafts are made: which mail account or tool, the signature, attachments, and where to record a draft |
+
+```bash
+claude plugin install writing@research-agent-toolkit \
+  --config academic_register="$HOME/notes/register-academic.md" \
+  --config email_register="$HOME/notes/register-email.md"
+```
+
+A register can name companion files to load with it, as the bundled ones name
+[`anti-tic.md`](plugins/writing/registers/anti-tic.md), a set of rules against the tells of
+machine-written prose. Both options are off until you set them, and the values are shown to the
+model, so keep anything secret out of the files they point at.
 
 ### Optional: connect your reference library
 

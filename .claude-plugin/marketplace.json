@@ -24,6 +24,24 @@
       "source": "./plugins/prompt-hardening",
       "description": "Strengthen a prompt before you rely on it, with anti-satisficing techniques.",
       "category": "research"
+    },
+    {
+      "name": "writing",
+      "source": "./plugins/writing",
+      "description": "Register-gated drafting for academic prose and email, and a fresh-context review panel for paper drafts.",
+      "category": "research"
+    },
+    {
+      "name": "session-reflection",
+      "source": "./plugins/session-reflection",
+      "description": "An end-of-session reflection protocol for research projects worked on with an AI agent.",
+      "category": "research"
+    },
+    {
+      "name": "heritage-taxonomy",
+      "source": "./plugins/heritage-taxonomy",
+      "description": "Classify dual-nature entities in historical text as building, organisation, or both, for faceted taxonomies.",
+      "category": "research"
     }
   ]
 }
