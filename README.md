@@ -140,8 +140,10 @@ pushes them: the profile script, and the output files the script lists. A script
 are clean, on the same branch and commit, and level with the remote. Each push names one commit
 and one branch, after checking that the commit sits directly on the one before it and changes
 only the expected files, so other branches, tags, and anyone else's commits are not published
-by it. It stops if either clone changes underneath it, and it never switches branch, resets, or
-force-pushes.
+by it. The remote must have a single address, which is checked and then used directly. The
+script does not lock the clones: it checks where each one is before and after every step, and
+stops if something else has moved it, but it can't promise to notice another writer in every
+instant. It never switches branch, resets, or force-pushes.
 The verifier still runs on this machine, so the dataset must be readable here as well.
 
 ## Why verification first

@@ -279,7 +279,7 @@ def test_a_commit_made_in_the_other_clone_during_the_run_stops_the_exchange(
     assert origin_refs(here)["refs/heads/main"] == script_commit
     assert not (here / "intruder.txt").exists()
     err = capfd.readouterr().err
-    assert "moved while the script ran" in err
+    assert "after the run" in err and "something else changed it" in err
     assert f"script commit (pushed): {script_commit}" in err
     assert "output commit" not in err
 
@@ -342,3 +342,63 @@ def test_a_stop_before_any_commit_says_nothing_was_committed(
     (there / "notes.txt").write_text("left over\n")
     assert transact(here, there, write_script(here)) == 1
     assert "Nothing had been committed or pushed." in capfd.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Third review round: every destination, and where each clone ends up
+# ---------------------------------------------------------------------------
+
+
+def is_empty(bare: Path) -> bool:
+    """Report whether a bare repository holds no refs at all."""
+    return git(bare, "for-each-ref") == ""
+
+
+@pytest.mark.parametrize("clone_with_extra", ["here", "there"])
+def test_a_second_push_address_is_refused_and_receives_nothing(
+    clones: tuple[Path, Path], tmp_path: Path, clone_with_extra: str
+) -> None:
+    """A push to a remote goes to every push address; the first one matching is not enough."""
+    here, there = clones
+    extra = tmp_path / "extra.git"
+    git(tmp_path, "init", "--quiet", "--bare", str(extra))
+    clone = here if clone_with_extra == "here" else there
+    first = git(clone, "remote", "get-url", "origin")
+    git(clone, "remote", "set-url", "--add", "--push", "origin", first)
+    git(clone, "remote", "set-url", "--add", "--push", "origin", str(extra))
+    # Asked for one push address, git gives the first, which hides the second.
+    assert git(clone, "remote", "get-url", "--push", "origin") == first
+
+    start = git(here, "rev-parse", "HEAD")
+    assert transact(here, there, write_script(here)) == 1
+    assert git(here, "rev-parse", "HEAD") == start  # stopped before the script commit
+    assert is_empty(extra)
+
+
+def test_a_commit_made_here_during_the_run_is_noticed_before_the_outputs_are_taken(
+    clones: tuple[Path, Path], capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A second writer moves this clone on; success must not be claimed."""
+    here, there = clones
+    interfere = (
+        "import subprocess\n"
+        f"HERE = {str(here)!r}\n"
+        "(Path(HERE) / 'meanwhile.txt').write_text('other work\\n')\n"
+        "subprocess.run(['git', 'add', 'meanwhile.txt'], cwd=HERE, check=True)\n"
+        "subprocess.run(['git', 'commit', '--quiet', '-m', 'meanwhile'], cwd=HERE, check=True)\n"
+    )
+    assert transact(here, there, write_script(here, extra=interfere)) == 1
+    captured = capfd.readouterr()
+    assert "before taking the outputs" in captured.err
+    assert "output commit (pushed)" in captured.err  # what really happened is reported
+    assert "outputs merged here" not in captured.err
+    assert "output commit:" not in captured.out
+
+
+def test_success_is_reported_only_with_both_clones_at_the_output_commit(
+    clones: tuple[Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    here, there = clones
+    assert transact(here, there, write_script(here)) == 0
+    assert git(here, "rev-parse", "HEAD") == git(there, "rev-parse", "HEAD")
+    assert "Both clones were on the branch at the output commit" in capsys.readouterr().out

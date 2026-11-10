@@ -47,11 +47,20 @@ What it then does, checking each step:
    fast-forwards to it.
 
 **What is published.** Each push names one commit hash and one branch
-(`git push REMOTE HASH:refs/heads/BRANCH`), so no other branch, tag, or
+(`git push ADDRESS HASH:refs/heads/BRANCH`), so no other branch, tag, or
 configured push rule takes part, and each commit's parent is checked first,
-so the push adds that single commit and nothing behind it. Push hooks run
-as usual. If another writer commits in either clone during the exchange, a
-parent or position check fails and the exchange stops before the next push.
+so the push adds that single commit and nothing behind it. The address is
+the remote's one address, read and checked before anything is committed and
+then used directly, so a remote with a second push address is refused and a
+later change to the remote's settings can't redirect the push. Push hooks
+run as usual.
+
+**Other writers.** The script does not lock either clone. It checks where
+each clone is before and after every step that depends on it, so if another
+writer commits or switches branch during the exchange, the next check fails
+and the exchange stops before the next push. It reports success only after
+confirming both clones are on the branch at the output commit; it cannot
+promise to notice a writer who acts between its last check and its exit.
 
 It prints the two commit hashes. Paths are worked out relative to each
 clone's root, so the two clones may live in different places.
@@ -192,9 +201,9 @@ def other_changes(status: str, allowed: str) -> list[str]:
     return [f"{state} {path}" for state, path in changed_paths(status) if path != allowed]
 
 
-def upstream_of(branch: str, get) -> tuple[str, str]:
+def upstream_of(branch: str, get) -> tuple[str, str, str]:
     """
-    Return the remote and the full branch ref that a branch tracks.
+    Return the remote, its one address, and the branch ref that a branch tracks.
 
     Args:
         branch: The local branch name.
@@ -202,11 +211,15 @@ def upstream_of(branch: str, get) -> tuple[str, str]:
             `git`) in the clone and returns its stripped output.
 
     Returns:
-        The remote's name and the ref on it, such as `refs/heads/main`.
+        The remote's name, the single address it fetches from and pushes to,
+        and the ref on it, such as `refs/heads/main`.
 
     Raises:
-        Stop: If the branch tracks nothing, tracks a local branch, or the
-            remote is a mirror or pushes somewhere other than it fetches from.
+        Stop: If the branch tracks nothing or a local branch, or the remote
+            is a mirror, or has more than one address for fetching or for
+            pushing, or pushes somewhere other than it fetches from. A push
+            to a remote goes to every push address it has, so a second one
+            would receive the commits unchecked.
     """
     remote = get(["config", "--get", f"branch.{branch}.remote"])
     ref = get(["config", "--get", f"branch.{branch}.merge"])
@@ -214,9 +227,31 @@ def upstream_of(branch: str, get) -> tuple[str, str]:
         raise Stop(f"branch {branch} does not track a branch on a remote")
     if get(["config", "--default", "false", "--get", f"remote.{remote}.mirror"]) == "true":
         raise Stop(f"remote {remote} is a mirror; refusing to push to it")
-    if get(["remote", "get-url", remote]) != get(["remote", "get-url", "--push", remote]):
-        raise Stop(f"remote {remote} pushes to a different place from where it fetches")
-    return remote, ref
+    fetch_urls = get(["remote", "get-url", "--all", remote]).splitlines()
+    push_urls = get(["remote", "get-url", "--push", "--all", remote]).splitlines()
+    if len(fetch_urls) != 1 or push_urls != fetch_urls:
+        raise Stop(
+            f"remote {remote} must have one address, used for both fetching and pushing; "
+            f"it fetches from {fetch_urls} and pushes to {push_urls}"
+        )
+    return remote, fetch_urls[0], ref
+
+
+def require_position(get, branch: str, commit: str, where: str, when: str) -> None:
+    """
+    Confirm a clone is on the given branch at exactly the given commit.
+
+    Raises:
+        Stop: If it is on another branch or at another commit, which means
+            something else moved it.
+    """
+    at_branch = get(["symbolic-ref", "--short", "HEAD"])
+    at_commit = get(["rev-parse", "HEAD"])
+    if at_branch != branch or at_commit != commit:
+        raise Stop(
+            f"{where} is on {at_branch} at {at_commit[:12]} {when}, not on {branch} at "
+            f"{commit[:12]}: something else changed it"
+        )
 
 
 def require_single_commit(get, commit: str, parent: str, paths: list[str], where: str) -> None:
@@ -300,7 +335,7 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
 
     # ---- checks here ---------------------------------------------------------
     branch = here(["symbolic-ref", "--short", "HEAD"])
-    origin, ref = upstream_of(branch, here)
+    origin, url, ref = upstream_of(branch, here)
     here(["fetch", "--quiet", origin, ref])
     head = here(["rev-parse", "HEAD"])
     if here(["rev-parse", "FETCH_HEAD"]) != head:
@@ -321,7 +356,7 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
     # ---- checks there --------------------------------------------------------
     if there(["symbolic-ref", "--short", "HEAD"]) != branch:
         raise Stop(f"the other clone is not on branch {branch}")
-    there_origin, there_ref = upstream_of(branch, there)
+    there_origin, there_url, there_ref = upstream_of(branch, there)
     if there_ref != ref:
         raise Stop(f"the other clone's branch tracks {there_ref}, not {ref}")
     if there(["status", "--porcelain=v1", "--untracked-files=all"]):
@@ -337,7 +372,7 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
     require_single_commit(here, script_commit, head, [script_rel], "here")
 
     # ---- 2. push that one commit to the one branch ---------------------------
-    here(["push", "--quiet", "--no-follow-tags", origin, f"{script_commit}:{ref}"])
+    here(["push", "--quiet", "--no-follow-tags", url, f"{script_commit}:{ref}"])
     del progress["script commit (here, not yet pushed)"]
     progress["script commit (pushed)"] = script_commit
 
@@ -348,16 +383,13 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
             f"the other clone's remote does not hold the script commit {script_commit[:12]} "
             f"on {ref}: the two clones do not share a remote, or someone pushed meanwhile"
         )
+    require_position(there, branch, head, "the other clone", "before taking the script")
     there(["merge", "--quiet", "--ff-only", script_commit])
+    require_position(there, branch, script_commit, "the other clone", "before the run")
     remote.run([args.python, script_rel])
 
     # ---- 4. commit exactly the listed outputs there --------------------------
-    if there(["symbolic-ref", "--short", "HEAD"]) != branch or \
-            there(["rev-parse", "HEAD"]) != script_commit:
-        raise Stop(
-            "the other clone moved while the script ran (another commit or branch); "
-            "no outputs were committed"
-        )
+    require_position(there, branch, script_commit, "the other clone", "after the run")
     manifest_rel = f"{output_rel}/{MANIFEST}"
     listed = read_manifest(remote.run(["cat", "--", manifest_rel]))
     outputs = [f"{output_rel}/{path}" for path in listed if path != MANIFEST] + [manifest_rel]
@@ -375,7 +407,7 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
     require_single_commit(there, output_commit, script_commit, outputs, "the other clone")
 
     # ---- 5. push that one commit to the one branch ---------------------------
-    there(["push", "--quiet", "--no-follow-tags", there_origin, f"{output_commit}:{ref}"])
+    there(["push", "--quiet", "--no-follow-tags", there_url, f"{output_commit}:{ref}"])
     del progress["output commit (there, not yet pushed)"]
     progress["output commit (pushed)"] = output_commit
 
@@ -386,7 +418,10 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
             f"{ref} on {origin} is not at the output commit {output_commit[:12]}; "
             "someone pushed meanwhile, and nothing was merged here"
         )
+    require_position(here, branch, script_commit, "this clone", "before taking the outputs")
     here(["merge", "--quiet", "--ff-only", output_commit])
+    require_position(here, branch, output_commit, "this clone", "after taking the outputs")
+    require_position(there, branch, output_commit, "the other clone", "at the end")
     progress["outputs merged here"] = output_commit
     return script_commit, output_commit
 
@@ -423,6 +458,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(f"script commit: {script_commit}")
     print(f"output commit: {output_commit}")
+    print("Both clones were on the branch at the output commit when this finished.")
     return 0
 
 
