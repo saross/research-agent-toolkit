@@ -1,0 +1,232 @@
+---
+name: reflect
+description: >-
+  End-of-session reflection protocol. Use when the user invokes reflect,
+  or asks to reflect on the current session, do end-of-session
+  reflections, or similar. Guides Claude through updating the project's
+  reflection documents in priority order, answering structured prompts,
+  and keeping the reflection and investigation logs.
+---
+
+# End-of-session reflection
+
+Update the current project's reflection documents by the protocol below.
+Work through them in priority order; if context is short, do the top of
+the list first.
+
+**Why this exists.** Reflection documents record the texture of a working
+session: what surprised, what changed belief, what will be hard to
+reconstruct later. A factual log of what was done does not keep those
+things, and they are what a researcher studying the work, or a future
+session picking it up, most often lacks.
+
+## Project context
+
+The skill works in any project. Reflections are always scoped to the
+**current working directory**, the project worked on in this session.
+
+1. **Determine the project** from the working directory, and name it at
+   the start ("Reflecting on session work in" and the project's name).
+2. **Find the reflection documents:** `wiki/reflections/` (preferred),
+   falling back to `docs/notes/reflections/`, relative to the project
+   root. If neither exists, create the starting structure below.
+3. **Tag each entry** with the project name and the session date in its
+   header, so entries are unambiguous when read out of context.
+
+## Starting structure (new projects)
+
+When neither folder exists, create `wiki/reflections/` and fill it in two
+tiers. The front matter of each document is in this skill's
+`templates/` folder, `${CLAUDE_PLUGIN_ROOT}/skills/reflect/templates/`.
+
+### Always create
+
+**`session-reflection.md`** (priority 1, scope: always; template
+`session-reflection.md`): reflection on the texture, dynamics, and
+significance of the session, using the prompt pool below.
+
+**`session-log.md`** (priority 5, scope: always; template
+`session-log.md`): a factual record of what was done, decided, and
+produced. Summarise, don't reflect: that is the reflection's job.
+
+When relevant, close a log entry with a brief **Contextual assumptions**
+note: what was true at the time that won't be obvious from the facts
+alone, such as decisions made under time pressure, tool or interface
+constraints that shaped the approach, or outside dependencies. Skip it
+when the context is self-evident.
+
+### Always ask
+
+After creating the two core documents, ask the user whether they want
+this one too, and say briefly what it does.
+
+**`abductive-reasoning.md`** (priority 3, scope: conditional; template
+`abductive-reasoning.md`): captures sequences of surprising fact, probe,
+and belief revision. It is updated only when a session produced a
+genuinely surprising finding, a belief revision, or a hypothesis tested
+and confirmed or disconfirmed; the condition keeps entries sharp. Kept
+across several projects, the documents form a corpus for studying how
+reasoning with an AI agent goes in practice.
+
+### Abductive entry contract
+
+The document is a research corpus, so entries must be findable,
+auditable, and comparable across projects. Every new entry follows this
+contract:
+
+- **Heading:** `## Entry N — YYYY-MM-DD: <title>`, continuing the file's
+  numbering. If the file uses an older date-first form, keep its
+  numbering scheme but add the anchor fields below.
+- **First two lines of every entry (mandatory):**
+  - `**Session:** <session-id>`. Get the current session's ID from the
+    newest transcript for this project: `ls -t
+    ~/.claude/projects/<project-folder>/*.jsonl | head -1`, where the
+    folder is the working directory's path with each `/` replaced by
+    `-`; the ID is the file name without `.jsonl`. If it really can't
+    be found, write `unrecorded`. Never guess.
+  - `**Instance:** primary` (the default), or `post-compaction` or
+    `continuation-from-summary` when this instance did not directly
+    experience the episode.
+- **Core sections:** `### Surprising fact`, `### Probe`, and
+  `### Belief revision`, always with these names.
+- **Named optional sections** (use these titles, not improvised ones):
+  `### What would change this belief` (a falsifier; use it liberally),
+  `### Implications for practice`, and `### What this is not`.
+- **Skip assessments are mandatory.** When the skill runs and no episode
+  qualifies, append a one-line dated assessment (`### YYYY-MM-DD —
+  Assessment: no qualifying episodes`, then one sentence on why). The
+  skips are the denominator for any analysis; silence loses data.
+- **Annotations added afterwards** are always marked as such:
+  `**Session anchor (retro-matched YYYY-MM-DD):** …`, with a confidence
+  label. Never present a later match as contemporaneous.
+
+> **Not a reflection document: `working-notes.md`.** A project's working
+> notes (empirical observations, methodological notes, and analytical
+> findings) are the research record itself, not part of the reflection
+> set. This skill neither creates nor edits them. Their usual home is
+> `wiki/working-notes.md`, or `docs/notes/working-notes.md` beside
+> `reflections/`, never inside it. If an older project has one inside
+> `reflections/`, exclude it from the loop below and leave it alone.
+> Reflection is meta-research (how the work and the collaboration
+> unfold); keep the layers separate.
+
+### Never create automatically
+
+Domain-specific documents (for example a log of model behaviour in a
+project that studies language models) are not created from templates.
+Let them emerge when the user sees a need.
+
+## Instance boundary
+
+Reflections are most valuable when written by the instance that did the
+session's work. If this run follows a compaction or a continuation (you
+are working from a summary of the conversation, not from direct
+experience), say so explicitly in the entries, and distinguish
+first-person observation from plausible reconstruction.
+
+## Protocol
+
+Process every `.md` file in the reflections folder, sorted by the
+`priority` field in its front matter (lowest number first). **Exclude
+`working-notes.md`** if it is present.
+
+For each document, **read it first**, for its numbering and context.
+Then append a new dated section that responds to what was distinctive
+about *this* session. Don't copy the structure of earlier entries: let
+the content set the form.
+
+### Conditional documents
+
+A document with `scope: conditional` in its front matter has a
+`conditions` field saying when to update it. Judge whether this session
+meets the conditions; if not, state that assessment and skip it (for the
+abductive document, with the mandatory skip line above).
+
+### Session reflection prompts
+
+For the session reflection (priority 1), choose two or three prompts
+from this pool, by relevance to the session. Don't use them all, and
+don't impose a fixed structure: let the prompts guide free reflection.
+
+**Rotation guard.** Choices tend to collapse onto a favourite few (in the
+two largest projects that used this skill, "what surprised you" appeared
+in nearly every entry, while "what felt uncertain or unresolved" was used
+once in about ninety entries). Before choosing,
+glance at the previous two entries: if a prompt appears in both, prefer
+one that appears in neither. Relevance still wins, but between two
+equally apt prompts, take the one the document has heard from least.
+
+**Core pool** (use at least one):
+
+- What surprised you about this session?
+- What would you do differently if you replayed this session?
+- What question emerged that wasn't pursued?
+- What context from this session will be hardest to reconstruct in six
+  months?
+
+**When relevant:**
+
+- What felt uncertain or unresolved at the end?
+- What was different about this session compared with recent ones?
+- Where did you and the human disagree, and who was right?
+- What decision or trade-off made today will look arbitrary without this
+  session's context?
+- What is the single most important thing a future reader should know
+  about this session?
+
+**Avoid** enumerated lists of "what each party brought". If both
+contributions matter, weave them into the narrative.
+
+## Claude observations (after the reflection documents)
+
+`claude-observations.md` is **not** a reflection document. It is a
+**default-keep** register of what *you*, the agent, observed about *the
+user* (their working style, choices, and decision dynamics), plus your
+own self-critiques of the collaboration. The defining axis is **the
+observer**: what you observe about the user goes here; what the user
+observes about you belongs in a register of their own words, if the
+project keeps one. It lives beside the reflection set
+(`wiki/claude-observations.md`, or `docs/notes/claude-observations.md`),
+**never inside `reflections/`**, so it is outside the priority loop
+above. You write it directly: it is yours, kept by default, and not
+waiting on the user's acceptance. Be liberal; empty is not the expected
+outcome.
+
+After the reflection documents, append one to four entries:
+
+- what you observed about how the user worked this session: a
+  working-style choice worth carrying forward, a productive push-back, a
+  self-critique of your own part, or a win or pitfall of how you work
+  together, seen from your side;
+- not the user's observations of you; those are theirs to make, in their
+  own words.
+
+**Duplicate guard.** Another end-of-session routine may write to this
+register too, and either may run first. Before writing, check for
+entries already dated today; if this session's observations are there,
+add only what is genuinely new.
+
+**Show them.** After writing, show the full text of the new entries in
+the session's closing message. The user reads them at session close to
+correct course; kept by default does not mean unseen.
+
+If the file doesn't exist, create it from this skill's template
+(`templates/claude-observations.md`).
+
+Format: `## claude-obs N — YYYY-MM-DD: <one-line summary>`, with
+**Pattern.**, **Lesson.**, and **How to apply.** sub-blocks. Never change
+an entry in place once the user has read it: a correction is a new entry
+that cross-references the old one.
+
+## Standards
+
+- Follow the user's language and spelling conventions (their
+  `CLAUDE.md`).
+- Concise but substantive: these are research documents.
+- Continue existing numbering sequences; never restart them.
+- Use dated section headers in the established format.
+- Update document footers or timestamps where they exist.
+- Footer fields (texture, engagement level, relational note) are
+  optional. Include one only when it discriminates: if engagement is
+  always "high", leave it out, and skip the relational note when nothing
+  notable happened.

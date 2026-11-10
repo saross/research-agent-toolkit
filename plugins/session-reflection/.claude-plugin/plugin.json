@@ -1,0 +1,10 @@
+{
+  "name": "session-reflection",
+  "displayName": "Session reflection",
+  "version": "0.1.0",
+  "description": "An end-of-session reflection protocol for research projects worked on with an AI agent: prioritised reflection documents, a rotating prompt pool, a schema for surprising findings and belief revisions, and an agent-kept register of observations about the collaboration.",
+  "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },
+  "repository": "https://github.com/saross/research-agent-toolkit",
+  "license": "Apache-2.0",
+  "keywords": ["reflection", "research-practice", "human-ai-collaboration", "documentation"]
+}
