@@ -118,43 +118,24 @@ def test_sees_a_change_zotero_has_committed_but_not_yet_merged(
         writer.close()
 
 
-def test_reads_a_checked_copy_when_the_database_is_locked(
+def test_a_locked_database_is_a_visible_failure_with_no_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """With the database held under an exclusive lock, the copy is read."""
-    items = [("DOI", "10.1000/abc", False), ("DOI", "10.1000/gone", False)]
-    folder = make_database(tmp_path, items)
+    """With the database held under an exclusive lock, nothing is reported as held."""
+    folder = make_database(tmp_path, [("DOI", "10.1000/abc", False)])
     holder = sqlite3.connect(folder / "zotero.sqlite")
     holder.execute("PRAGMA locking_mode=EXCLUSIVE")
     holder.execute("PRAGMA journal_mode=WAL")
-    holder.execute("PRAGMA wal_autocheckpoint=0")
-    holder.execute("INSERT INTO deletedItems VALUES (2)")
+    holder.execute("INSERT INTO deletedItems VALUES (99)")
     holder.commit()  # the lock is now held until `holder` closes
+    monkeypatch.setattr(example, "LOCK_WAIT", 0.2)
     try:
-        with pytest.raises(sqlite3.OperationalError):
-            example.query_dois(folder / "zotero.sqlite", read_only=True)
-        assert run(monkeypatch, folder, "10.1000/abc\n10.1000/gone\n") == 0
-        assert capsys.readouterr().out == "10.1000/abc\n"
+        assert run(monkeypatch, folder, "10.1000/abc\n") == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "library check failed" in captured.err and "close Zotero" in captured.err
     finally:
         holder.close()
-
-
-def test_fails_when_the_database_keeps_changing_during_the_copy(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A copy that can't be shown to be steady is never read."""
-    folder = make_database(tmp_path, [("DOI", "10.1000/abc", False)])
-    calls = iter(range(100))
-    changing = lambda database: [("zotero.sqlite", next(calls), 0)]  # noqa: E731
-    monkeypatch.setattr(example, "fingerprint", changing)
-
-    def locked(database: Path, read_only: bool) -> set[str]:
-        raise sqlite3.OperationalError("database is locked")
-
-    monkeypatch.setattr(example, "query_dois", locked)
-    assert run(monkeypatch, folder, "10.1000/abc\n") == 1
-    captured = capsys.readouterr()
-    assert captured.out == "" and "kept changing" in captured.err
 
 
 def test_exits_with_an_error_and_prints_nothing_without_a_database(
