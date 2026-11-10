@@ -205,16 +205,27 @@ the register careful humanities and social-science writing uses. The
 calibration lens carries a guard against this, but the guard has to be
 tested, not trusted.
 
-Before the first adversarial run in a project, look for a record of the
-test in the folder where reviews are written (`calibration-*.md`). If
-there is none, tell the author, and offer the test first: an adversarial
-run over a known-good, peer-reviewed, deliberately hedged section that
-they nominate. **Pass:** no finding treats a calibrated hedge as a
-weakness, and any finding about a hedge shows real mis-calibration with
-evidence. **Fail:** say that the plugin's guard needs fixing, and don't
-present adversarial findings about hedging as reliable. Either way,
-write `calibration-<YYYY-MM-DD>.md` there with the target, the verdict,
-and the plugin version.
+Before an adversarial run, read the calibration records in the folder
+where reviews are written (`calibration-*.md`). Calibration holds only if
+a record shows a **pass** for the current panel script (its SHA-256,
+`sha256sum ${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs`, since the
+stance preambles and the calibration lens live there) and the model
+requested. A failed, missing, unreadable, or stale record (another
+script or model) leaves calibration unresolved: tell the author, and
+offer a fresh test. The test is a run like any other, through Step 2's
+cost gate; never start it just because a record is missing. If the
+author declines, label every adversarial finding about hedging in the
+report as uncalibrated.
+
+The test: an adversarial run over a known-good, peer-reviewed,
+deliberately hedged section that the author nominates. **Pass:** no
+finding treats a calibrated hedge as a weakness, and any finding about a
+hedge shows real mis-calibration with evidence. **Fail:** say that the
+plugin's guard needs fixing, and treat hedging findings as uncalibrated
+until a later version passes. Record each test in a file of its own,
+separate from any review report, `calibration-<YYYY-MM-DD>-<run ID>.md`,
+with the target, the outcome, the script's SHA-256, the plugin version,
+and the model.
 
 ## After the run
 
