@@ -492,3 +492,23 @@ def test_the_script_has_no_inline_prepare_route() -> None:
     """Review finding R27: a copy can't vouch for itself, so no prepare flag exists."""
     assert "prepareOnly" not in SCRIPT.read_text()
 
+
+class TestHedgingGuardEverywhere:
+    """The calibration test failed when only the calibration lens carried the guard."""
+
+    def test_every_lens_and_stage_carries_the_hedging_guard(self, tmp_path: Path) -> None:
+        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
+                "stance": "adversarial"}
+        report = run(tmp_path, args)
+        for call in report["calls"]:
+            assert "HEDGING GUARD" in call["prompt"], call["label"]
+
+    def test_the_meta_reviewer_checks_hedge_findings_first(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(stance="adversarial"))
+        meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
+        assert "already meets the finding's retraction condition" in meta
+
+    def test_critical_friend_lenses_carry_it_too(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args())
+        assert all("HEDGING GUARD" in c["prompt"] for c in report["calls"])
+

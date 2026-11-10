@@ -281,6 +281,14 @@ grep hit, citekey, or verbatim quote) — no anchor, no finding.`
 }
 
 // --- Shared prompt scaffolding ----------------------------------------------
+const HEDGING_GUARD = `HEDGING GUARD (applies to every dimension, not only calibration): careful humanities and
+social-science prose uses deliberate hedging, risk, and limitation language as a mark of rigour.
+A calibrated hedge is a strength. Don't report hedging, cautious framing, or an acknowledged
+limitation as a weakness unless you can show the hedge is mis-calibrated against the evidence it
+covers. Before reporting any finding about a hedged claim, check whether the existing wording
+already meets the finding's own retraction condition; if it does, there is no finding.
+(Language-model reviewers systematically underrate hedged prose; don't be that reviewer.)`
+
 const STANDING_INSTRUCTIONS_CAUTION = `Your context may also hold the user's standing instructions or memories (for example a
 CLAUDE.md). Follow applicable standing instructions, including permission, ownership,
 approval, safety, and language rules. Biographical details, memories, and facts about the
@@ -308,6 +316,10 @@ have been checked against the .aux and .bib files by the mechanical pre-pass.)`)
   // meta-reviewer naming places from it in a paper whose rulings kept the
   // site unnamed.
   context.push(STANDING_INSTRUCTIONS_CAUTION)
+  // The calibration test failed when only the calibration lens carried this
+  // guard: a source-fidelity lens, under the adversarial preamble, treated a
+  // calibrated hedge as a weakness, and the meta-reviewer passed it.
+  context.push(HEDGING_GUARD)
   if (rulings) {
     context.push(`SETTLED RULINGS REGISTER (author-settled — do NOT re-flag these; they are closed.
 Report one ONLY if the prose has DRIFTED from the recorded ruling, and mark that finding
@@ -770,6 +782,13 @@ the target file(s) and the files named below; nothing else in the repository.
 
 ${STANDING_INSTRUCTIONS_CAUTION}
 ${metaContext()}
+
+${HEDGING_GUARD}
+
+For any finding about a hedge, cautious wording, or a stated limitation, check first whether the
+hedge is calibrated, and whether the text already meets the finding's retraction condition. If
+either holds, the finding is not sound: classify it semantic-drift (or placeholder, if it would
+apply to any hedged prose), say why in its note, and list it in verifyBeforePresenting.
 
 For EACH finding below, classify its trustworthiness:
 - sound — well-grounded; evidence anchor checks out.
