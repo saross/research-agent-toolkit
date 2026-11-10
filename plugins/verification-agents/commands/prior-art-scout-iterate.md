@@ -56,8 +56,11 @@ the no-progress tracker: `LAST_FAIL_SET=""`.
 ### Extraction helper
 
 The plugin's helper takes the input file, the marker, and the output
-file. It ignores leading indentation, exits with an error when it finds
-no block, and then leaves the output file empty:
+file. It ignores leading indentation and accepts only a complete block
+(both markers, an opening and a closing fence, in order). Otherwise it
+exits with an error and leaves the output file empty; for the verifier's
+report, treat that as a verifier failure and never count a partly
+extracted file:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract INPUT_FILE MARKER OUTPUT_FILE
@@ -138,36 +141,42 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract \
 #### Step G — Read the verdict
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" count \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" count prior-art \
   "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
 ```
 
 The helper parses every line and prints `PASS_CT`, `PARTIAL_CT`,
 `FAIL_CT`, `UNVER_CT`, `DOCDEF_CT`, `LEGACY_CT`, `INVALID_CT`, and
-`TOTAL_CT` as `NAME=value` lines, then `FAIL_SET`, the failed
-`claim_id`s. Use those values below. Don't count by searching the file
-for text: a verdict written with different spacing would be missed, and
-a run with failed claims would look like a pass.
+`TOTAL_CT` as `NAME=value` lines, then `FAIL_SET` (the failed
+`claim_id`s) and `VERDICT`. **Act on the `VERDICT` line.** Don't work the
+verdict out yourself from the counts, and don't count by searching the
+file for text: a verdict written with different spacing would be missed,
+and a run with failed claims would look like a pass.
 
-**If the helper exits with an error** (`INVALID_CT` above zero, or no
-verdicts at all), the verdict can't be trusted. Don't treat it as PASS
-and don't iterate: stop, show the verifier's own output, and say that
-its corrections block could not be read.
+Five cases, one for each value of `VERDICT`:
 
-Four cases:
+##### G.0 — `VERDICT=INVALID`, or no `VERDICT` line
 
-##### G.1 — PASS (`FAIL_CT == 0 && PARTIAL_CT == 0 && DOCDEF_CT == 0 && LEGACY_CT == 0`)
+The verdicts can't be relied on: a line isn't a verdict, or there are
+none. This is never a pass. Don't iterate: stop, show the verifier's own
+output, and say that its corrections block could not be read. The same
+applies if the extraction in Step F exited with an error.
+
+##### G.1 — `VERDICT=PASS` (every verdict is `pass`)
 
 Loop terminates successfully. Skip to Final reporting.
 
-##### G.2 — PARTIAL or DOCUMENTATION_DEFECT (`FAIL_CT == 0 && (PARTIAL_CT > 0 || DOCDEF_CT > 0)`)
+##### G.2 — `VERDICT=PARTIAL` (no failure, but not every claim passed)
 
-Loop terminates without iterating. Final report includes both
-sets of non-iterating divergences clearly flagged.
+Loop terminates without iterating, with status `PARTIAL`. The final
+report flags each kind clearly, using `PARTIAL_CT`, `DOCDEF_CT`, and
+`UNVER_CT`: partial matches, documentation defects, and claims the
+verifier could not check. A claim that couldn't be checked is not a
+pass, and must be named as unchecked.
 
-##### G.3 — FAIL (`FAIL_CT > 0`) — continue to no-progress check
+##### G.3 — `VERDICT=FAIL` (at least one failed claim) — continue to no-progress check
 
-##### G.4 — Legacy (`LEGACY_CT > 0`)
+##### G.4 — `VERDICT=LEGACY`
 
 Terminate with status `LEGACY_PROPOSER`.
 

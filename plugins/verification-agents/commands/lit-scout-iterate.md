@@ -82,8 +82,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract INPUT_FILE MARKER 
 
 Use it twice in each iteration: on the proposer's draft (marker
 `claims.jsonl`), and on the verifier's integrated report (marker
-`corrections.jsonl`). It exits with an error, and leaves the output file
-empty, when it finds no block. Don't write your own extraction in its
+`corrections.jsonl`). It accepts only a complete block (both markers, an
+opening and a closing fence, in order). Otherwise it exits with an error
+and leaves the output file empty. Don't write your own extraction in its
 place.
 
 When you save an agent's output, save all of it, exactly as it came. If
@@ -176,45 +177,50 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" extract \
   "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
 ```
 
-If the verifier's output has no corrections block at all, treat it as a
-verifier failure (see "Failures and recovery" below).
+If the helper exits with an error, the verifier's output has no complete
+corrections block: it is missing, cut short, or malformed. Treat that as
+a verifier failure (see "Failures and recovery" below), and never count a
+partly extracted file.
 
 #### Step G: read the verdict
 
 Work the verdict out from `corrections.jsonl`, with the plugin's helper:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" count \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/loop_tools.py" count lit-scout \
   "${ITERATE_ROOT}/iter-${N}/corrections.jsonl"
 ```
 
 It parses every line and prints `PASS_CT`, `PARTIAL_CT`, `FAIL_CT`,
 `UNVER_CT`, `LEGACY_CT`, `INVALID_CT`, and `TOTAL_CT` as `NAME=value`
-lines, then `FAIL_SET`, the failed `claim_id`s. Use those values in the
-cases below. Don't count by searching the file for text: a verdict
-written with different spacing would be missed, and a run with failed
-claims would look like a pass.
+lines, then `FAIL_SET` (the failed `claim_id`s) and `VERDICT`. **Act on
+the `VERDICT` line.** Don't work the verdict out yourself from the counts
+or from the report's prose, and don't count by searching the file for
+text: a verdict written with different spacing would be missed, and a run
+with failed claims would look like a pass.
 
 `UNVER_CT` leaves out the `_legacy` placeholder, which also carries
 `status: unverifiable` but means something else entirely (see G.5).
 
-**If the helper exits with an error** (`INVALID_CT` above zero, or no
-verdicts at all), the verdict can't be trusted. Don't treat it as PASS
-and don't iterate: treat it as a verifier failure (see "Failures and
-recovery" below).
+Six cases, one for each value of `VERDICT`:
 
-Five cases, checked in order:
+##### G.0: `VERDICT=INVALID`, or the helper printed no `VERDICT` line
 
-##### G.1: PASS (`FAIL_CT == 0 && PARTIAL_CT == 0 && UNVER_CT == 0 && LEGACY_CT == 0`)
+The verdicts can't be relied on: a line isn't a verdict, or there are
+none. This is never a pass. Don't iterate: treat it as a verifier failure
+(see "Failures and recovery" below). The same applies if the extraction
+in Step F exited with an error.
+
+##### G.1: `VERDICT=PASS` (every verdict is `pass`)
 
 The loop ends successfully. Go to "Final report".
 
-##### G.2: PARTIAL (`FAIL_CT == 0 && PARTIAL_CT > 0 && UNVER_CT == 0 && LEGACY_CT == 0`)
+##### G.2: `VERDICT=PARTIAL` (no failure, nothing unverifiable, at least one partial match)
 
 The loop ends with the PARTIAL flag, without iterating. Go to "Final
 report".
 
-##### G.3: UNVERIFIABLE (`FAIL_CT == 0 && UNVER_CT > 0 && LEGACY_CT == 0`)
+##### G.3: `VERDICT=UNVERIFIABLE` (no failure, at least one claim that couldn't be checked)
 
 Some claims couldn't be checked. Do **not** iterate: iterating can't fix a
 claim whose problem is that the registry didn't answer, and re-running the
@@ -224,12 +230,12 @@ Stop with status `UNVERIFIABLE`. This is deliberately not reported as PASS:
 the run established nothing about those rows, and calling it PASS would
 claim a verification that didn't happen. Go to "Final report".
 
-##### G.4: FAIL (`FAIL_CT > 0`): go on to the throttle check
+##### G.4: `VERDICT=FAIL` (at least one failed claim): go on to the throttle check
 
 Any unverifiable claims in the same iteration ride through untouched.
 Iterate on the `fail` claims only.
 
-##### G.5: older proposer, or a structural failure (`LEGACY_CT > 0`)
+##### G.5: `VERDICT=LEGACY` (older proposer, or a structural failure)
 
 The proposer didn't emit a `claims.jsonl` block, so the closed loop can't
 work. Go to "Final report" with status `LEGACY_PROPOSER`.
@@ -237,7 +243,8 @@ work. Go to "Final report" with status `LEGACY_PROPOSER`.
 #### Step H0: throttle check (FAIL only)
 
 Before spending another iteration, check whether the registries were
-actually answering:
+actually answering, using the `UNVER_CT` and `TOTAL_CT` values that the
+count in Step G printed:
 
 ```bash
 # Stop rather than iterate if a third or more of the claims
@@ -454,8 +461,8 @@ LLM-assisted data extraction from historical documents; scope:
 | The proposer errors at iteration 0 | The agent returns an error and no draft | Run the command again with the same query; nothing was saved that could conflict |
 | The proposer errors at a later iteration | Iterate mode fails | The previous iteration's outputs remain. Start `lit-scout` by hand with `previous_draft_path` and `previous_corrections_path` pointing at them |
 | The verifier errors | Step D returns an error or malformed output | The iteration's `draft.md` is kept: verify it with the `lit-scout-verify` command |
-| No corrections block | Step F produces an empty file | Treat it as a verifier failure: show the verifier's own output, and don't iterate |
-| Unreadable verdicts | The count in Step G exits with an error | The same: show the verifier's own output, say that its verdicts could not be read, and don't report PASS |
+| No complete corrections block | The extraction in Step F exits with an error | Treat it as a verifier failure: show the verifier's own output, and don't iterate |
+| Unreadable verdicts | Step G prints `VERDICT=INVALID` | The same: show the verifier's own output, say that its verdicts could not be read, and don't report PASS |
 | Limit reached | Status `CAP_REACHED` | Look at the remaining failed claims and their fix hints: the proposer may be unable to satisfy the verifier on those rows |
 | Stall | Status `NO_PROGRESS` | As for the limit, but sooner. Often a sign of an ambiguous fix hint, or a metadata API returning inconsistent results |
 | BibTeX errors | The BibTeX step fails | Note it in the output; still return the integrated report |
