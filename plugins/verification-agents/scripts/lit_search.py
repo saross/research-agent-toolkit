@@ -1439,10 +1439,17 @@ def cmd_bibtex(
                 missing.append(doi)
                 continue
             entry = resp.text.strip()
-            if entry:
+            if entry.startswith("@"):
                 entry = _dedupe_bibtex_key(entry, seen_keys)
                 entries.append(entry)
                 log.info("bibtex: generated entry for %s", doi)
+            elif entry:
+                # A registry that does not offer BibTeX answers the resolver
+                # with its landing page and status 200. That is not an entry
+                # and must not be written into the file as one.
+                log.warning("bibtex: the answer for DOI %s is not BibTeX", doi)
+                entries.append(f"% FAILED: {doi} (the registry did not return BibTeX)\n")
+                missing.append(doi)
             else:
                 entries.append(f"% EMPTY RESPONSE: {doi}\n")
                 missing.append(doi)

@@ -1828,3 +1828,16 @@ class TestBibtexBeyondCrossref:
         with caplog.at_level("WARNING"):
             lit_search.cmd_bibtex(["10.1/a", "10.1/b"], client)
         assert "2 of 2 DOIs produced an entry" in caplog.text
+
+    @patch.object(lit_search, "_rate_limit")
+    def test_a_landing_page_is_not_written_as_an_entry(self, mock_rl, caplog):
+        """A registry without BibTeX answers 200 with HTML; that is a miss."""
+        client = self._client({
+            lit_search.CROSSREF_BASE: (404, ""),
+            lit_search.DOI_RESOLVER: (200, "<!DOCTYPE html><html><body>Landing</body></html>"),
+        })
+        with caplog.at_level("WARNING"):
+            result = lit_search.cmd_bibtex(["10.5555/no-bibtex"], client)
+        assert "<html" not in result
+        assert "% FAILED: 10.5555/no-bibtex (the registry did not return BibTeX)" in result
+        assert "0 of 1 DOIs produced an entry; none for: 10.5555/no-bibtex" in caplog.text
