@@ -29,14 +29,11 @@ Two files beside this skill do the work:
 
 Core invariants (don't weaken them in orchestration):
 
-- **Fresh-context panel:** each lens reads only the target artefacts.
-  Never paste the drafting conversation's context into lens prompts.
-  Claude Code still gives each agent the user's own `CLAUDE.md` and
-  memory. The prompts tell the agents to keep following standing rules
-  (permission, safety, language) but never to use biographical details
-  or facts about the user's places, projects, or other work as evidence,
-  and Step 4 checks for any that got through. This reduces and checks
-  for contamination; it does not guarantee isolation.
+- **Fresh-context panel:** each lens reads only the target artefacts;
+  never paste the drafting conversation into lens prompts. Agents still
+  see the user's `CLAUDE.md` and memory: the prompts keep their standing
+  rules but bar personal facts as evidence, and Step 4 checks. This
+  reduces contamination; it does not guarantee isolation.
 - **Deterministic verdict:** computed from finding severities, including
   the mechanical pre-pass. No agent's opinion, including the
   meta-reviewer's, ever overrides it.
@@ -120,21 +117,14 @@ the workflow sandbox has no clock), plus `prepassFindings` and
 `settledRulings` from Step 1.
 
 Call the Workflow tool with `scriptPath` set to
-`${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs` and the arguments.
-
-The tool loads a script by path only from the working directory or a
-directory added to the session, so this works only when the user has
-added the plugin's folder. **If the path is refused** (the error says
-the script path must be one the tool returned or a file you can already
-read), stop. Tell the user the panel needs that folder, and give its
-exact path, the folder holding the script above. They can add it for
-this session with `/add-dir` and that path, or for every session by
-listing it (or the plugin cache folder above it, which also covers
-later versions) under `permissions.additionalDirectories` in their user
-settings. Then try the same path again. Don't change their settings
-yourself, and don't pass the script inline or copy it anywhere: a copy
-can't be checked before it runs, so the panel would not be this
-plugin's panel.
+`${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs` and the arguments. The
+tool loads a script by path only from the working directory or an added
+directory. **If the path is refused**, stop and give the user the exact
+folder holding the script: they can add it with `/add-dir`, or list it
+(or the plugin cache folder above it, which covers later versions)
+under `permissions.additionalDirectories`. Then try the same path again.
+Don't change their settings, and don't pass the script inline or copy
+it: a copy can't be checked before it runs.
 
 A run that has to be repeated, for any reason, goes back through
 Step 2: approval covers one run.
@@ -158,16 +148,14 @@ fix would have broken correct text. Before the report ships:
    taxonomy (total fabrication, partial corruption, identifier
    hijacking, placeholder, semantic drift; arXiv 2602.05930), and keep the
    kill list in the report. It is the panel's calibration record.
-3. Convergence (`converged: true`) raises priority, never the verdict. On a short
-   section (about a page or less), most findings share a line with another, and the
-   flag says little: rank by distinct issues that more than one lens raised instead,
-   and say so in the report.
-4. Drop any finding, note, or blind spot that draws on the user's own
-   instructions or memory (facts about the author, their places, projects,
-   or other work) rather than on the artefacts, and list it with the kills.
-5. Check every strength you present in the same way. A strength that rests on an
-   unresolved citation or a misread line could protect the wrong text: drop it, and
-   list it with the kills.
+3. Convergence (`converged: true`) raises priority, never the verdict.
+   On a section of a page or less it marks most findings and says
+   little: rank by distinct issues more than one lens raised, and say
+   so.
+4. Drop, and list with the kills, any finding, note, blind spot, or
+   strength that draws on the user's own instructions or memory rather
+   than the artefacts, or that rests on an unresolved citation or a
+   misread line (a wrong strength protects the wrong text).
 
 ## Step 5: render the triaged report, with a stamp
 
@@ -178,14 +166,11 @@ verdicts and findings per dimension; then the overall verdict
 (`CONFIRMED`, `QUALIFIED`, or `CHALLENGED` for adversarial; the
 `cleared` true-or-false for critical-friend); then prioritised
 recommendations (the meta-reviewer's priorities, weighted by
-convergence). **If the result's `gateValid` is false, it has no verdict
-and no clearance.** Say so at the top of the report, name the stages
-that failed from `coverage` (the panel's count of lenses that ran, and
-the synthesis, unanimous check, and meta-review, each `ran`, `failed`,
-`not-required`, or `not-triggered`), and show the severity-only result
-from `provisional` only under that name: it does not stand as a gate
-until the failed stages are re-run. Present what the author must act on
-in three tiers:
+convergence). **If `gateValid` is false, there is no verdict and no
+clearance:** say so at the top, name the failed stages from `coverage`,
+and show the result in `provisional` only under that name, until the
+failed stages are re-run. Present what the author must act on in three
+tiers:
 
 1. **Act-now mechanical batch:** pre-authorised, no per-item review.
 2. **Rulings needed:** before-and-after snippets with one line of context
