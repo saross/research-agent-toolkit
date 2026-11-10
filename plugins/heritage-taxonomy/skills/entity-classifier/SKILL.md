@@ -120,6 +120,8 @@ Use "both" when:
 
 - Context contains **both spatial AND agency indicators**
 - Text treats entity as **both place and actor** in same passage
+- The entity's name shifts within the text between the structure and the organisation (a
+  metonymic shift)
 - Example: "Concert at the hotel [building], with the hotel [business] providing refreshments"
 
 ### Default Guidance
@@ -132,13 +134,17 @@ When indicators are **weak or absent**:
 - **Schools of Arts**: Consider activity (event venue = building, committee decisions =
   organisation)
 - **Halls**: Usually buildings unless committee/management explicitly mentioned
+- **Any other type, or where the guidance above gives no default and the context is weak**:
+  take the stronger cue if there is one; otherwise give the likelier reading at low confidence
+  and flag the mention for human review
 
 ## Output format
 
-**Always write classification results to a Markdown file**, never only in
-the conversation. Chat is ephemeral; a file is an audit trail that a
-reviewer can check, that later sessions can build on, and that documents
-the method.
+**For a batch, or whenever the user asks, write the results to a
+Markdown file**, not only into the conversation: a file is an audit trail
+that a reviewer can check and later sessions can build on. For a single
+mention asked about in passing, answer in the conversation and offer to
+write the file.
 
 - **Location:** where the project keeps such results. If it has no
   convention, use `outputs/<entity-type>/<entity-type>-classification-results.md`
@@ -156,31 +162,29 @@ For each mention analysed, give:
 ```text
 ### Entity: [entity name]
 **Item:** [article or document title]
-**Classification:** building | business | both
+**Classification:** building | organisation | both
 **Confidence:** high | medium | low
 
 **Reasoning:**
 [Two or three sentences explaining the classification, naming the indicators found in the context]
 
 **Indicators found:**
+
 - Building: [the indicators matched, or "none"]
-- Business: [the indicators matched, or "none"]
+- Organisation: [the indicators matched, or "none"]
 
 **Context:**
 > [The excerpt showing the mention and enough surrounding text to check it]
 ```
+
+"Organisation" covers a business (a hotel as its proprietor or
+management) as well as a body (a congregation, a committee, an order).
 
 ## Confidence Levels
 
 - **High**: Multiple strong indicators present; classification unambiguous
 - **Medium**: Some indicators present but context could support alternative reading
 - **Low**: Minimal indicators; relying on defaults or general patterns
-
-## Special Cases Requiring "Both"
-
-1. **Mixed signals in same passage**: Both spatial and agency cues present
-2. **Metonymic shift**: Entity name refers to both structure and organisation within text
-3. **Parallel constructions**: Text explicitly treats entity as both place and actor
 
 ## Quality Standards
 
@@ -227,54 +231,87 @@ This informs whether the entity should use:
 - **Separate leaf nodes** with intrinsic distinction (halls vs lodges)
 - **Disambiguated leaf nodes** with parenthetical qualifiers (hotel (building) vs hotel (business))
 
-## Example Analyses
+## Example analyses
 
-### Example 1: Building Only
+### Entity: Carrington Hotel
 
-**Context:** "A concert was held at the Carrington Hotel last evening, attended by many prominent
-citizens."
-
+**Item:** (example)
 **Classification:** building
-**Reasoning:** Strong locational indicator ("at the Carrington Hotel") with event occurrence. No
-agency or business operation signals. Hotel functions purely as venue.
-**Indicators:** Building: locational_prep, events_at | Business: none
+**Confidence:** high
+
+**Reasoning:**
+A strong locational phrase ("at the Carrington Hotel") with an event held there, and no sign of
+the hotel acting as an agent. The hotel is purely the venue.
+
+**Indicators found:**
+
+- Building: locational phrases; events occurring
+- Organisation: none
+
+**Context:**
+> "A concert was held at the Carrington Hotel last evening, attended by many prominent citizens."
 
 ---
 
-### Example 2: Business Only
+### Entity: Imperial Hotel
 
-**Context:** "The Imperial Hotel has announced extensive renovations and will close for the season
-to complete the work."
+**Item:** (example)
+**Classification:** organisation
+**Confidence:** high
 
-**Classification:** business
-**Reasoning:** Hotel acts as agent (announcing, closing, completing work). Active voice with agency
-verbs. No spatial or locational cues.
-**Indicators:** Building: none | Business: agency_verbs, business_ops
+**Reasoning:**
+The hotel acts as an agent: it announces, closes, and completes work, in the active voice. There
+are no spatial or locational cues.
+
+**Indicators found:**
+
+- Building: none
+- Organisation: agency verbs; business operations
+
+**Context:**
+> "The Imperial Hotel has announced extensive renovations and will close for the season to
+> complete the work."
 
 ---
 
-### Example 3: Both (Polyhierarchical)
+### Entity: Megalong Hotel
 
-**Context:** "The Megalong Hotel proprietor applied for a licence renewal. Meanwhile, a dance was
-held at the hotel on Saturday evening."
-
+**Item:** (example)
 **Classification:** both
-**Reasoning:** First sentence treats hotel as business (proprietor agency, licensing). Second
-sentence treats hotel as venue (event location). Both aspects present in same context.
-**Indicators:** Building: locational_prep, events_at | Business: proprietor_subject, legal_agent
+**Confidence:** high
+
+**Reasoning:**
+The first sentence treats the hotel as a business (its proprietor applies for a licence); the
+second treats it as a venue (a dance held at it). Both aspects appear in the same passage.
+
+**Indicators found:**
+
+- Building: locational phrases; events occurring
+- Organisation: ownership/management; legal agency
+
+**Context:**
+> "The Megalong Hotel proprietor applied for a licence renewal. Meanwhile, a dance was held at
+> the hotel on Saturday evening."
 
 ---
 
-### Example 4: Metonymy — Business
+### Entity: Katoomba Hotel (metonymy)
 
-**Context:** "The Katoomba Hotel denies responsibility for the incident and contests the charges."
+**Item:** (example)
+**Classification:** organisation
+**Confidence:** high
 
-**Classification:** business
-**Reasoning:** Metonymic usage — "hotel" stands for hotel management/proprietor (agents who can deny
-and contest). Not referring to physical building.
-**Indicators:** Building: none | Business: metonymy (agency verbs with abstract subject)
+**Reasoning:**
+"The hotel" stands for its management or proprietor, who can deny and contest; the building is
+not meant.
 
----
+**Indicators found:**
+
+- Building: none
+- Organisation: metonymy (agency verbs with the entity as subject); legal agency
+
+**Context:**
+> "The Katoomba Hotel denies responsibility for the incident and contests the charges."
 
 ## Working with Batch Data
 
@@ -285,24 +322,8 @@ When processing multiple entities:
 3. **Flag outliers** — if entity classification differs from pattern, explain why
 4. **Preserve context** — always include enough context for human to verify
 
-## Place in a project's workflow
+## Other entity types
 
-- **Input:** entity mentions with their full surrounding text (for
-  example newspaper articles held in a reference library)
-- **Process:** analyse each mention in context with this framework
-- **Output:** structured recommendations for facet assignment
-- **Review:** a human expert approves or changes each classification
-- **Application:** the approved classifications update the project's tag
-  map or taxonomy, by the project's own procedure
-
-## Notes for Reuse
-
-This skill is designed to be reusable across any dual-nature entity type:
-
-- **Hotels, inns, public houses** (accommodation vs hospitality business)
-- **Churches, chapels** (building vs religious organisation)
-- **Schools of Arts, Mechanics' Institutes** (hall vs cultural society)
-- **Fraternal halls** (lodge building vs fraternal order)
-- **Schools** (educational facility vs educational institution)
-
-Adjust the default guidance and entity-specific patterns as needed for each type.
+The heuristic carries over to any dual-nature type: inns and public houses, chapels, mechanics'
+institutes, fraternal halls (the lodge building or the order), and schools (the facility or the
+institution). Adjust the default guidance and the type-specific patterns for each.
