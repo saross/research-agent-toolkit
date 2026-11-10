@@ -51,7 +51,12 @@ Plugin commands, skills, and agents are namespaced, so the literature scout runs
   callers higher rate limits.
 - `review-paper` needs Claude Code's Workflow tool (dynamic workflows, on paid plans; on Pro, turn
   it on in `/config`). Its mechanical pre-pass needs only Python 3, and uses `aspell` and
-  `texcount` when they are installed.
+  `texcount` when they are installed. The Workflow tool loads a script by path only from a
+  directory the session can work in, so by default the skill passes its panel script inline (about
+  10,000 output tokens per run) and checks that the copy matches. To let it load the script by
+  path instead, add the plugin cache, `/home/<you>/.claude/plugins/cache/research-agent-toolkit`,
+  to `permissions.additionalDirectories` in your user settings, or add it for one session with
+  `/add-dir`. That gives Claude the same file access there as in your working directory.
 
 The agents take your field and language conventions from your `CLAUDE.md`, so they need no other
 configuration.

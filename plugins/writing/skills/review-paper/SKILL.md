@@ -103,17 +103,39 @@ and 4–6 minutes wall-clock.
 
 A whole-paper adversarial run is a deliberate pre-submission spend, not
 routine. On a subscription plan these tokens draw on the user's usage
-limits.
+limits. If the dispatch below has to pass the script inline, add about
+10,000 output tokens in this session for the copy.
 
 ## Step 3: dispatch
 
-Call the Workflow tool with `scriptPath` set to
-`${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs` and the arguments the
-script's header lists, as a JSON object. Always pass `model` and
-`run_date` (today's date: the workflow sandbox has no clock), plus
-`prepassFindings` and `settledRulings` from Step 1. Record the run ID
-(`wf_…`) from the **Workflow tool's result**, for the stamp: the
-script's return value can't know it.
+The arguments are those the script's header lists, as a JSON object
+(not a JSON string). Always pass `model` and `run_date` (today's date:
+the workflow sandbox has no clock), plus `prepassFindings` and
+`settledRulings` from Step 1.
+
+The Workflow tool loads a script by path only from the working
+directory or a directory added to the session, and this plugin's folder
+is usually neither. So:
+
+1. **Try the path first.** Call the Workflow tool with `scriptPath` set
+   to `${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs` and the
+   arguments. This works when the user has added the plugin's folder to
+   their session's directories.
+2. **If the path is refused** (the error says the script path must be
+   one the tool returned or a file you can already read), Read the
+   script in full and call the Workflow tool again with `script` set to
+   its exact contents, character for character, and the same arguments.
+   Don't shorten, reformat, or correct anything in it. Never copy it
+   into the user's repository to get round the refusal.
+3. **Check what ran.** The tool's result names the script file it
+   saved. Compare that file with the bundled one (`cmp` the two paths).
+   If they differ, stop the run at once with the task ID in the result,
+   and tell the user: a copying error means the panel that ran is not
+   this plugin's panel, and its verdict can't stand. Then dispatch
+   again.
+
+Record the run ID (`wf_…`) from the **Workflow tool's result**, for the
+stamp: the script's return value can't know it.
 
 ## Step 4: verify contested findings BEFORE presenting
 
