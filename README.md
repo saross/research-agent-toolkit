@@ -47,6 +47,53 @@ Plugin commands and agents are namespaced, so the literature scout runs as
 The agents take your field and language conventions from your `CLAUDE.md`, so they need no other
 configuration.
 
+### Optional: connect your reference library
+
+The literature scout can check what you already hold, and import what it finds, through two
+commands of your own. Both are plugin options, both are off until you set them, and the plugin
+ships no reference-manager code: you point it at a script that knows your library.
+
+| Option | The command is given | The command prints |
+| --- | --- | --- |
+| `library_check_command` | Candidate DOIs on standard input, one per line | One line for each DOI your library holds: the DOI, then optionally a tab and a note. The scout marks those rows `[HAVE]` |
+| `library_import_command` | One argument: the run folder of a finished `lit-scout-iterate` | A Markdown summary, which becomes the report's "Library import" section |
+
+The run folder holds `query.txt` (your query) and one `iter-N` folder per iteration; the
+highest-numbered one holds the final `claims.jsonl` (one record per claim, with the full `doi`),
+`corrections.jsonl` (the verifier's verdict on each claim), and `report.md` (the verified
+report). Rows that failed verification or couldn't be checked are still in `claims.jsonl`, so an
+import command should read `corrections.jsonl` and mark them. Both commands should exit with an
+error status when they fail; the scout then reports the failure and never marks a row `[HAVE]`
+on a failed check.
+
+Set the options when you install, or later:
+
+```bash
+claude plugin install verification-agents@research-agent-toolkit \
+  --config library_check_command="$HOME/bin/have-doi.sh"
+claude plugin configure verification-agents@research-agent-toolkit
+```
+
+Inside Claude Code, `/plugin configure verification-agents` opens the same options. Use full
+paths, and keep API keys out of the option values: they are stored in your `settings.json` and
+shown to the model. A script that needs a key should read it from its own environment or file.
+
+A minimal check command, for a library exported to one BibTeX file:
+
+```bash
+#!/usr/bin/env bash
+# have-doi.sh: print each DOI from standard input that appears in the export.
+# It matches substrings, so a DOI that is a prefix of another also matches.
+while IFS= read -r doi; do
+  [ -n "$doi" ] && grep -qiF -- "$doi" "$HOME/references.bib" && printf '%s\n' "$doi"
+done
+exit 0
+```
+
+The values are commands that the agent runs in your shell, so set them only to scripts you
+trust. An unset option needs Claude Code to leave its placeholder in the text or to fill it with
+nothing, which is how version 2.1.322 behaves; the agents treat either as "not set".
+
 ## Why verification first
 
 A model states an invented specific, such as a citation, author list, number, or file path, with the

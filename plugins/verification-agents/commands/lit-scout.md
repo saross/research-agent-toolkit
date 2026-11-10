@@ -19,6 +19,10 @@ The query is: $ARGUMENTS
 
 It can include target venues, scope limits, time periods, and so on.
 
+If the user has set the plugin's library check command, the proposer marks
+what they already hold. The library import command runs only from the
+`lit-scout-iterate` command, which keeps the run folder it needs.
+
 ## Behaviour
 
 The command is a thin orchestrator. It does **no reasoning about the

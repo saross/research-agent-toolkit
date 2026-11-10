@@ -1,10 +1,22 @@
 {
   "name": "verification-agents",
   "displayName": "Verification agents",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Proposer and verifier agent pairs for research: literature scouting with citation chaining, prior-art discovery, and dataset profiling, each checked by an independent adversarial verifier.",
   "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },
   "repository": "https://github.com/saross/research-agent-toolkit",
   "license": "Apache-2.0",
-  "keywords": ["research", "literature-review", "verification", "confabulation", "bibliography"]
+  "keywords": ["research", "literature-review", "verification", "confabulation", "bibliography"],
+  "userConfig": {
+    "library_check_command": {
+      "type": "string",
+      "title": "Library check command",
+      "description": "Optional. A command that reads DOIs on standard input, one per line, and prints the ones already in your reference library. The literature scout marks those [HAVE]. Leave empty to skip the check."
+    },
+    "library_import_command": {
+      "type": "string",
+      "title": "Library import command",
+      "description": "Optional. A command that takes a finished lit-scout-iterate run folder as its one argument, imports the verified items into your reference library, and prints a Markdown summary. Leave empty to skip the import."
+    }
+  }
 }

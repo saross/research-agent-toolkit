@@ -66,6 +66,10 @@ Each iteration writes to `${ITERATE_ROOT}/iter-{N}/`, so the whole sequence
 is kept for inspection. Start the no-progress tracker with
 `LAST_FAIL_SET=""`.
 
+Save the user's query, verbatim, to `${ITERATE_ROOT}/query.txt` with the
+Write tool. It records what the run was for, and the optional library
+import reads it.
+
 ### Extracting the blocks
 
 Both agents embed their machine-readable data as fenced `jsonl` blocks
@@ -304,6 +308,8 @@ corrected Findings table, which is what the user actually wants.)
 **Final verifier report:** ${ITERATE_ROOT}/iter-{N}/report.md
 **Final claims:** ${ITERATE_ROOT}/iter-{N}/claims.jsonl
 **Final corrections:** ${ITERATE_ROOT}/iter-{N}/corrections.jsonl
+**Library import:** (only if a library import command ran: the heading
+"## Library import", then the command's output verbatim)
 **BibTeX file:** /tmp/lit-scout-iterate-bibtex-YYYYMMDD-HHMMSS.bib
 (N entries; import it into your reference manager)
 ```
@@ -345,6 +351,38 @@ corrected Findings table, which is what the user actually wants.)
 - **LEGACY_PROPOSER**: "**⚠ CLOSED LOOP NOT POSSIBLE.** The proposer's draft
   did not contain a machine-readable `claims.jsonl` block. Returning the
   single-round verifier output without iteration."
+
+### Library import (optional)
+
+The user can set a library import command in this plugin's options
+(`library_import_command`). Its value is the single line in this block:
+
+```text
+${user_config.library_import_command}
+```
+
+The option is **not set** if that line is empty, or if it begins with a
+dollar sign and an opening brace (an unfilled placeholder). In that case
+skip this step and say nothing about it.
+
+If it is set, run it once after the final iteration, on every status
+except `LEGACY_PROPOSER` (which has no structured claims to import), with
+the run folder as its one argument:
+
+```bash
+<the command, exactly as given> "${ITERATE_ROOT}"
+```
+
+The command reads `query.txt` and the final iteration's `claims.jsonl`,
+`corrections.jsonl`, and `report.md` from that folder. Claims that didn't
+pass are still in `claims.jsonl`; `corrections.jsonl` says which they
+are, and marking them in the library is the command's job. Put the
+command's standard output, verbatim, into the final report as a
+"## Library import" section, just before the BibTeX pointer. If it exits
+with an error, put "Library import failed:" and the error text in that
+section instead, and still return the report and the BibTeX file. Run it
+once only: don't retry a failed import, because a second run may create
+duplicates in the user's library.
 
 ### BibTeX
 
@@ -390,6 +428,7 @@ LLM-assisted data extraction from historical documents; scope:
 | Limit reached | Status `CAP_REACHED` | Look at the remaining failed claims and their fix hints: the proposer may be unable to satisfy the verifier on those rows |
 | Stall | Status `NO_PROGRESS` | As for the limit, but sooner. Often a sign of an ambiguous fix hint, or a metadata API returning inconsistent results |
 | BibTeX errors | The BibTeX step fails | Note it in the output; still return the integrated report |
+| Library import errors | The library import command exits with an error | Note it in the "Library import" section; still return the integrated report and the BibTeX file. Don't run the import again automatically |
 | The user stops it | The loop is interrupted | The partial sequence in `${ITERATE_ROOT}/` can be inspected; start later runs in a new folder |
 
 ## Notes
