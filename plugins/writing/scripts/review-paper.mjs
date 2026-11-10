@@ -550,9 +550,11 @@ function collectFindings() {
 // Each line is attributed to the file the anchor names, so a .bib or .blg line
 // never counts as a line of the target (found in a real run, where 39 of 41
 // findings were marked converged); a bare ":N" belongs to the finding's own
-// target. A range counts every line in it, up to MAX_ANCHOR_RANGE lines.
+// target. A short range (up to MAX_ANCHOR_RANGE lines) counts every line in
+// it; a wider one counts only its first line, since a range spanning most of a
+// section shows no agreement about where a problem is.
 const LINE_ANCHOR = /(?:([\w./-]+\.[A-Za-z][A-Za-z0-9]{0,4}))?:(\d{1,5})(?:\s*[-–]\s*(\d{1,5}))?\b/g
-const MAX_ANCHOR_RANGE = 20
+const MAX_ANCHOR_RANGE = 5
 const baseName = (p) => String(p).split('/').pop()
 
 function anchorTokens(f) {
@@ -562,8 +564,8 @@ function anchorTokens(f) {
   for (const m of s.matchAll(LINE_ANCHOR)) {
     const file = m[1] ? baseName(m[1]) : own
     const start = Number(m[2])
-    const end = m[3] && Number(m[3]) >= start
-      ? Math.min(Number(m[3]), start + MAX_ANCHOR_RANGE - 1) : start
+    const last = m[3] ? Number(m[3]) : start
+    const end = last >= start && last - start < MAX_ANCHOR_RANGE ? last : start
     for (let n = start; n <= end; n++) tokens.add(`line:${file}:${n}`)
   }
   for (const m of s.matchAll(/\b([A-Za-z][\w.-]*_\d{4}[a-z]?|[A-Z][A-Za-z]+\d{4}[A-Za-z]*)\b/g)) {
@@ -599,6 +601,22 @@ const tally = (fs) => ({
   minors: fs.filter((f) => f.severity === 'minor').length,
   info: fs.filter((f) => !['blocker', 'major', 'minor'].includes(f.severity)).length,
 })
+
+// What the lenses were given, so the meta-reviewer can check a finding that
+// rests on it instead of marking it unverifiable (found in a real run, where
+// findings that depended on the paper brief could not be checked).
+function metaContext() {
+  const parts = []
+  if (A.paperBrief) parts.push(`PAPER BRIEF (the static context the lenses had):\n${A.paperBrief}`)
+  if (A.sourceNotesDir) parts.push(`Source notes the lenses used (you may read them): ${A.sourceNotesDir}`)
+  if (Array.isArray(A.bibPaths) && A.bibPaths.length) {
+    parts.push(`Bibliography files (you may read them): ${A.bibPaths.join(', ')}`)
+  }
+  if (Array.isArray(A.readOnlyContext) && A.readOnlyContext.length) {
+    parts.push(`Other read-only context the lenses could consult: ${A.readOnlyContext.join(', ')}`)
+  }
+  return parts.length ? '\n' + parts.join('\n\n') + '\n' : ''
+}
 
 // --- Phase 3 (adversarial only): unanimous-check + meta-reviewer ------------
 let unanimousCheck = null
@@ -665,6 +683,7 @@ of fresh-context sceptic lenses has reviewed ${TARGETS.length} section(s) of a m
 (repo: ${REPO}; targets: ${TARGETS.join(', ')}). Your job is to review the REVIEWS —
 adversarially — before the report reaches the author. You may read the target file(s) to
 check a finding, but your subject is the panel's findings, not the manuscript.
+${metaContext()}
 
 For EACH finding below, classify its trustworthiness:
 - sound — well-grounded; evidence anchor checks out.

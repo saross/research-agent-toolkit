@@ -276,3 +276,29 @@ class TestConvergenceAnchors:
         result = self._two(tmp_path, "methods.tex:10-12", "/papers/example/sections/methods.tex:11")
         assert all(f.get("converged") for f in result["findings"])
         assert [g["token"] for g in result["convergenceGroups"]] == ["line:methods.tex:11"]
+
+    def test_a_wide_range_counts_only_its_first_line(self, tmp_path: Path) -> None:
+        """methods.tex:6-22 says nothing about line 15 in particular."""
+        result = self._two(tmp_path, "methods.tex:6-22", "methods.tex:15")
+        assert not any(f.get("converged") for f in result["findings"])
+        again = self._two(tmp_path, "methods.tex:6-22", "methods.tex:6")
+        assert all(f.get("converged") for f in again["findings"])
+
+
+class TestMetaReviewerContext:
+    """The meta-reviewer is given what the lenses were given (found in a real run)."""
+
+    def test_brief_notes_and_bibliography_reach_the_meta_reviewer(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(
+            stance="adversarial", paperBrief="Mounds were sited to be seen.",
+            sourceNotesDir="/papers/example/notes", bibPaths=["/papers/example/refs.bib"],
+        ))
+        meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
+        assert "Mounds were sited to be seen." in meta
+        assert "/papers/example/notes" in meta and "/papers/example/refs.bib" in meta
+
+    def test_without_context_the_prompt_has_no_empty_headings(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(stance="adversarial"))
+        meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
+        assert "PAPER BRIEF" not in meta and "Source notes" not in meta
+
