@@ -365,20 +365,34 @@ The option is **not set** if that line is empty, or if it begins with a
 dollar sign and an opening brace (an unfilled placeholder). In that case
 skip this step and say nothing about it.
 
-If it is set, run it once after the final iteration, on every status
-except `LEGACY_PROPOSER` (which has no structured claims to import), with
-the run folder as its one argument:
+If it is set, run this after the final iteration, on every status except
+`LEGACY_PROPOSER` (which has no structured claims to import). First
+divide the final claims into verified and unverified papers:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/split_claims.py" "${ITERATE_ROOT}"
+```
+
+That writes `verified-claims.jsonl` (papers whose every check passed) and
+`unverified-claims.jsonl` (all the others, each claim with a
+`verification` field saying what didn't pass) into the run folder, and
+prints the two counts. If it fails, don't run the import command: report
+"Library import skipped:" with the error text in the section below.
+
+Then run the import command once, with the run folder as its one
+argument:
 
 ```bash
 <the command, exactly as given> "${ITERATE_ROOT}"
 ```
 
-The command reads `query.txt` and the final iteration's `claims.jsonl`,
-`corrections.jsonl`, and `report.md` from that folder. Claims that didn't
-pass are still in `claims.jsonl`; `corrections.jsonl` says which they
-are, and marking them in the library is the command's job. Put the
-command's standard output, verbatim, into the final report as a
-"## Library import" section, just before the BibTeX pointer. If it exits
+The command is expected to import from `verified-claims.jsonl`. What it
+does with the unverified papers is the user's decision, built into their
+command; the full iteration folders and `query.txt` are there if it
+wants them. Put into the final report a "## Library import" section,
+just before the BibTeX pointer, holding one line with the two counts
+from the split ("N papers verified, M unverified") and then the
+command's standard output, verbatim. If it exits
 with an error, put "Library import failed:" and the error text in that
 section instead, and still return the report and the BibTeX file. Run it
 once only: don't retry a failed import, because a second run may create

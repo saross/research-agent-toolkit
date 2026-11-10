@@ -16,7 +16,7 @@
     "library_import_command": {
       "type": "string",
       "title": "Library import command",
-      "description": "Optional. A command that takes a finished lit-scout-iterate run folder as its one argument, imports the verified items into your reference library, and prints a Markdown summary. Leave empty to skip the import."
+      "description": "Optional. A command that takes a finished lit-scout-iterate run folder as its one argument, imports the papers listed in its verified-claims.jsonl into your reference library, and prints a Markdown summary. Leave empty to skip the import."
     }
   }
 }

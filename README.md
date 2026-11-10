@@ -56,15 +56,26 @@ ships no reference-manager code: you point it at a script that knows your librar
 | Option | The command is given | The command prints |
 | --- | --- | --- |
 | `library_check_command` | Candidate DOIs on standard input, one per line | One line for each DOI your library holds: the DOI, then optionally a tab and a note. The scout marks those rows `[HAVE]` |
-| `library_import_command` | One argument: the run folder of a finished `lit-scout-iterate` | A Markdown summary, which becomes the report's "Library import" section |
+| `library_import_command` | One argument: the run folder of a finished `lit-scout-iterate`, in which the verified papers are listed separately from the rest | A Markdown summary, which becomes the report's "Library import" section |
 
-The run folder holds `query.txt` (your query) and one `iter-N` folder per iteration; the
-highest-numbered one holds the final `claims.jsonl` (one record per claim, with the full `doi`),
-`corrections.jsonl` (the verifier's verdict on each claim), and `report.md` (the verified
-report). Rows that failed verification or couldn't be checked are still in `claims.jsonl`, so an
-import command should read `corrections.jsonl` and mark them. Both commands should exit with an
-error status when they fail; the scout then reports the failure and never marks a row `[HAVE]`
-on a failed check.
+**Import from `verified-claims.jsonl`.** Before it runs your import command, the plugin divides
+the run's results into two files in the run folder:
+
+| File | Holds |
+| --- | --- |
+| `verified-claims.jsonl` | The claims (authors, year, title, citation count, DOI) for papers whose every check passed. One record per claim, each with the full `doi` |
+| `unverified-claims.jsonl` | The same for every other paper: a check failed, was only a partial match, couldn't be completed, or wasn't made. Each record has a `verification` field saying which |
+
+A run can end with unverified papers still in its table, for example when a registry was
+throttled. An import command that reads only `verified-claims.jsonl` can't put one of those into
+your library by accident. Import the unverified ones only if your command marks them clearly
+(a tag, a separate collection), so that you check them before you cite them.
+
+The run folder also holds `query.txt` (your query) and one `iter-N` folder per iteration; the
+highest-numbered holds the final `claims.jsonl`, `corrections.jsonl` (the verifier's verdict on
+each claim), and `report.md` (the verified report). Both commands should exit with an error
+status when they fail; the scout then reports the failure, and never marks a row `[HAVE]` on a
+failed check.
 
 Set the options when you install, or later:
 
