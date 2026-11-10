@@ -104,8 +104,8 @@ shown to the model. A script that needs a key should read it from its own enviro
 **An example for Zotero.**
 [`plugins/verification-agents/examples/zotero-library-check.py`](plugins/verification-agents/examples/zotero-library-check.py)
 is a working check command for a Zotero library on the same computer. It reads the DOI field of
-every item in your local Zotero database, in all your libraries, without writing to it, and
-needs only Python. Copy it somewhere of your own, read it, and set `library_check_command` to
+every item in your local Zotero database, in all your libraries, never changes your library,
+and needs only Python. Copy it somewhere of your own, read it, and set `library_check_command` to
 `python3` followed by its full path. There is no example import command: importing writes to
 your library, and how you want new items filed, tagged, and de-duplicated is yours to decide.
 The Zotero web API and the `pyzotero` library are the usual route.

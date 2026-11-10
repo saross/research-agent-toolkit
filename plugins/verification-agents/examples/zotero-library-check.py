@@ -16,9 +16,14 @@ line, and prints each one that an item in your Zotero database carries in
 its DOI field, in any of your libraries, including group libraries. Items in
 the bin are ignored. A paper you hold with an empty DOI field is not found.
 
-It only reads. The database is opened in SQLite's immutable mode, so it is
-safe to run while Zotero is open, and it sees the database as last saved to
-disk. It uses the Python standard library alone.
+It only reads, and it uses the Python standard library alone. It first
+opens the database read-only in the ordinary way, which sees everything
+Zotero has saved. If Zotero has the database locked, as it may while it is
+open, the script copies the database files to a temporary folder, checks
+that they didn't change while being copied, and reads the copy. If it can't
+get a steady copy in a few attempts it fails, so that a half-written
+database is never read. It does not use SQLite's "immutable" mode, which
+can give wrong answers for a file that another program is changing.
 
 By default it looks in `~/Zotero`, Zotero's usual data folder. Set the
 environment variable `ZOTERO_DATA_DIR` if yours is elsewhere (Zotero shows
@@ -35,8 +40,10 @@ checked instead of marking everything new.
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 #: Spellings that can wrap a DOI in Zotero's DOI field or in the input.
@@ -80,6 +87,88 @@ def normalise(doi: str) -> str:
     return text
 
 
+#: SQLite keeps recent changes in these files beside the database.
+COMPANIONS = ("-wal", "-journal")
+
+#: How many times to try for a copy that didn't change while being made.
+COPY_ATTEMPTS = 3
+
+
+def query_dois(database: Path, read_only: bool) -> set[str]:
+    """
+    Read every DOI from a database file through an ordinary connection.
+
+    Args:
+        database: Path to the database file.
+        read_only: Open the file read-only. A private copy is opened for
+            writing instead, so SQLite can apply its pending changes.
+
+    Returns:
+        The set of normalised DOIs carried by items outside the bin.
+
+    Raises:
+        sqlite3.Error: If the file is locked or is not a Zotero database.
+    """
+    address = f"{database.as_uri()}?mode=ro" if read_only else database.as_uri()
+    connection = sqlite3.connect(address, uri=True, timeout=2)
+    try:
+        return {normalise(value) for (value,) in connection.execute(QUERY) if value}
+    finally:
+        connection.close()
+
+
+def fingerprint(database: Path) -> list[tuple[str, int, int]]:
+    """
+    Describe the database files as they are now.
+
+    Args:
+        database: Path to the database file.
+
+    Returns:
+        The name, size, and modification time of the database and of each
+        companion file that exists. Two equal results mean nothing was
+        written in between.
+    """
+    found = []
+    for suffix in ("", *COMPANIONS):
+        path = database.with_name(database.name + suffix)
+        if path.exists():
+            status = path.stat()
+            found.append((path.name, status.st_size, status.st_mtime_ns))
+    return found
+
+
+def query_copy(database: Path) -> set[str]:
+    """
+    Read every DOI from a private copy of a database that is locked.
+
+    The database and its companion files are copied to a temporary folder.
+    The copy is used only if the originals were the same before and after
+    copying, which shows that no write happened part-way through.
+
+    Args:
+        database: Path to the locked database file.
+
+    Returns:
+        The set of normalised DOIs carried by items outside the bin.
+
+    Raises:
+        sqlite3.Error: If no steady copy could be made, or the copy can't be
+            read as a Zotero database.
+    """
+    for _ in range(COPY_ATTEMPTS):
+        with tempfile.TemporaryDirectory(prefix="zotero-library-check-") as folder:
+            before = fingerprint(database)
+            for name, _, _ in before:
+                shutil.copy2(database.with_name(name), Path(folder) / name)
+            if fingerprint(database) != before:
+                continue  # Zotero wrote during the copy: try again
+            return query_dois(Path(folder) / database.name, read_only=False)
+    raise sqlite3.OperationalError(
+        "the Zotero database kept changing while it was being copied; try again shortly"
+    )
+
+
 def held_dois(database: Path) -> set[str]:
     """
     Return every DOI in the Zotero database, normalised.
@@ -96,11 +185,14 @@ def held_dois(database: Path) -> set[str]:
     """
     if not database.is_file():
         raise FileNotFoundError(f"no Zotero database at {database}")
-    connection = sqlite3.connect(f"{database.as_uri()}?immutable=1", uri=True)
     try:
-        return {normalise(value) for (value,) in connection.execute(QUERY) if value}
-    finally:
-        connection.close()
+        return query_dois(database, read_only=True)
+    except sqlite3.OperationalError as error:
+        # Only a lock sends us to the copy. Any other error, such as a file
+        # that isn't a Zotero database, is reported as it is.
+        if "locked" not in str(error).lower() and "busy" not in str(error).lower():
+            raise
+    return query_copy(database)
 
 
 def main() -> int:

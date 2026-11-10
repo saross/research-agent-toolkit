@@ -27,8 +27,10 @@ the verifier's `corrections.jsonl`, and every verdict on every claim is
 
 - a claim with a `partial`, `fail`, or `unverifiable` verdict;
 - a claim with no verdict at all (absence of a check is not a pass);
+- a claim with no `doi` field, since an import needs the full DOI and it
+  can't be rebuilt from the `claim_id`;
 - a verdict whose DOI disagrees with its claim's DOI;
-- a claim identifier that appears under two different papers.
+- claims that share an identifier but name different DOIs.
 
 Some defects in `corrections.jsonl` can't be tied to one paper, and any of
 them might hide a failure. Each makes **every** paper unverified: a line
@@ -37,11 +39,12 @@ other than the four the verifier uses; a verdict short of `pass` for a claim
 this run never made; and the `_legacy` placeholder.
 
 Verdicts are matched to claims by `claim_id`, which the verifier copies
-exactly. Claims are grouped into papers by their own `doi` field, compared
-without regard to letter case or a leading `https://doi.org/` or `doi:`. A
-claim with no `doi` is grouped by its `claim_id` without the category
-suffix. The DOI is never rebuilt from the `claim_id`, which loses
-information.
+exactly. Two claims belong to the same paper if they have the same DOI
+(compared without regard to letter case or a leading `https://doi.org/` or
+`doi:`) or the same `claim_id` once its category suffix is removed. So a
+claim that lacks its `doi` still joins the paper its identifier names, and
+that paper is judged as a whole: its claims all land in the same file. The
+DOI is never rebuilt from the `claim_id`, which loses information.
 
 The claims come from the highest-numbered `iter-N` folder. If that folder
 has no claims (an interrupted iteration, say), the script fails instead of
@@ -162,21 +165,41 @@ def final_iteration(run_folder: Path) -> Path:
     return final
 
 
-def paper_of(claim: dict) -> str:
+def group_papers(claims: list[dict]) -> list[int]:
     """
-    Return the key of the paper a claim belongs to.
+    Assign each claim to a paper.
+
+    Two claims are the same paper if they share a canonical DOI, or share a
+    `claim_id` once its category suffix is removed. The relation is followed
+    through chains, so a claim without a DOI joins the claims its identifier
+    names, and those join every claim with their DOI.
 
     Args:
-        claim: One claim record.
+        claims: The claim records.
 
     Returns:
-        "doi:" and the canonical DOI when the claim has one; otherwise "id:"
-        and the `claim_id` without its category suffix.
+        For each claim, in order, the number of its paper. Claims with
+        neither a DOI nor a `claim_id` each form a paper of their own.
     """
-    doi = canonical_doi(claim.get("doi"))
-    if doi:
-        return f"doi:{doi}"
-    return "id:" + CATEGORY_SUFFIX.sub("", str(claim.get("claim_id") or "").strip())
+    parent = list(range(len(claims)))
+
+    def root(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    first_with: dict[str, int] = {}
+    for index, claim in enumerate(claims):
+        doi = canonical_doi(claim.get("doi"))
+        claim_id = claim.get("claim_id")
+        base = CATEGORY_SUFFIX.sub("", claim_id.strip()) if isinstance(claim_id, str) else ""
+        for key in ([f"doi:{doi}"] if doi else []) + ([f"id:{base}"] if base else []):
+            if key in first_with:
+                parent[root(index)] = root(first_with[key])
+            else:
+                first_with[key] = index
+    return [root(index) for index in range(len(claims))]
 
 
 def split(
@@ -201,21 +224,27 @@ def split(
     if unreadable:
         everywhere.append(f"{unreadable} unreadable line(s) in corrections.jsonl")
 
-    # Each claim identifier, the paper it belongs to, and its category.
-    papers_of_id: dict[str, set[str]] = {}
-    reasons: dict[str, list[str]] = {}  # paper -> why it is unverified
-    for claim in claims:
-        paper = paper_of(claim)
-        reasons.setdefault(paper, [])
+    paper = group_papers(claims)  # claim index -> paper number
+    reasons: dict[int, list[str]] = {number: [] for number in paper}
+
+    # What each paper's claims say about its identity.
+    dois_of_paper: dict[int, set[str]] = {number: set() for number in paper}
+    papers_of_id: dict[str, set[int]] = {}
+    for index, claim in enumerate(claims):
+        doi = canonical_doi(claim.get("doi"))
+        if doi:
+            dois_of_paper[paper[index]].add(doi)
+        else:
+            reasons[paper[index]].append("a claim has no doi")
         claim_id = claim.get("claim_id")
-        if not isinstance(claim_id, str) or not claim_id.strip():
-            reasons[paper].append("a claim has no claim_id")
-            continue
-        papers_of_id.setdefault(claim_id, set()).add(paper)
-    for claim_id, papers in papers_of_id.items():
-        if len(papers) > 1:
-            for paper in papers:
-                reasons[paper].append(f"claim_id {claim_id} appears under more than one paper")
+        if isinstance(claim_id, str) and claim_id.strip():
+            papers_of_id.setdefault(claim_id, set()).add(paper[index])
+        else:
+            reasons[paper[index]].append("a claim has no claim_id")
+    for number, found in dois_of_paper.items():
+        if len(found) > 1:
+            reasons[number].append("claims that share an identifier name different DOIs")
+    paper_of_doi = {doi: number for number, found in dois_of_paper.items() for doi in found}
 
     # Every verdict, attached to its claim by claim_id.
     statuses_of_id: dict[str, list[str]] = {}
@@ -241,36 +270,42 @@ def split(
         statuses_of_id.setdefault(claim_id, []).append(status)
         doi = canonical_doi(record.get("doi"))
         if doi:
-            for paper in papers_of_id[claim_id]:
-                if paper.startswith("doi:") and paper != f"doi:{doi}":
-                    reasons[paper].append(f"verdict for {claim_id} names another DOI")
-                    if f"doi:{doi}" in reasons:
-                        reasons[f"doi:{doi}"].append(
+            for number in papers_of_id[claim_id]:
+                if doi not in dois_of_paper[number]:
+                    reasons[number].append(f"verdict for {claim_id} names another DOI")
+                    if doi in paper_of_doi:
+                        reasons[paper_of_doi[doi]].append(
                             f"verdict for {claim_id} names this DOI but belongs to another paper"
                         )
 
     # Every claim needs a verdict, and every verdict must be a pass.
-    for claim in claims:
+    for index, claim in enumerate(claims):
         claim_id = claim.get("claim_id")
         if not isinstance(claim_id, str) or not claim_id.strip():
             continue
         label = str(claim.get("category") or claim_id)
         found = statuses_of_id.get(claim_id, [])
         if not found:
-            reasons[paper_of(claim)].append(f"{label}: no verdict")
+            reasons[paper[index]].append(f"{label}: no verdict")
         for status in found:
             if status != "pass":
-                reasons[paper_of(claim)].append(f"{label}: {status}")
+                reasons[paper[index]].append(f"{label}: {status}")
 
+    # A paper is judged as a whole: all of its claims go to the same file.
     verified: list[dict] = []
     unverified: list[dict] = []
-    for claim in claims:
-        why = list(dict.fromkeys(reasons[paper_of(claim)] + everywhere))
+    for index, claim in enumerate(claims):
+        why = list(dict.fromkeys(reasons[paper[index]] + everywhere))
         if why:
             unverified.append({**claim, "verification": why})
         else:
             verified.append(claim)
     return verified, unverified
+
+
+def count_papers(claims: list[dict]) -> int:
+    """Return how many papers a list of claims covers."""
+    return len(set(group_papers(claims)))
 
 
 def write_jsonl(path: Path, records: list[dict]) -> None:
@@ -304,8 +339,8 @@ def main(argv: list[str]) -> int:
     write_jsonl(run_folder / VERIFIED_NAME, verified)
     write_jsonl(run_folder / UNVERIFIED_NAME, unverified)
     print(
-        f"{final.name}: {len({paper_of(c) for c in verified})} papers verified, "
-        f"{len({paper_of(c) for c in unverified})} unverified"
+        f"{final.name}: {count_papers(verified)} papers verified, "
+        f"{count_papers(unverified)} unverified"
     )
     return 0
 

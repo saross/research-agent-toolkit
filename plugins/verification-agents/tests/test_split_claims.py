@@ -146,11 +146,47 @@ def test_a_claim_id_shared_by_two_papers_unverifies_both() -> None:
     assert verified == []
 
 
-def test_claims_without_a_doi_are_grouped_by_claim_id() -> None:
+def test_a_failing_claim_without_its_doi_takes_the_whole_paper_with_it() -> None:
+    """The title claim lacks `doi` and fails; the four with the DOI pass."""
+    claims = claims_for("10.1000/abc-def")
+    del claims[2]["doi"]
+    corrections = verdicts_for("10.1000/abc-def", title="fail")
+    verified, unverified = split_claims.split(claims, corrections)
+    assert verified == [] and len(unverified) == 5
+    assert "title: fail" in unverified[0]["verification"]
+
+
+def test_a_passing_claim_without_its_doi_still_unverifies_the_paper() -> None:
+    """Every record in the verified file must carry the full DOI."""
+    claims = claims_for("10.1000/abc-def")
+    del claims[2]["doi"]
+    verified, unverified = split_claims.split(claims, verdicts_for("10.1000/abc-def"))
+    assert verified == [] and len(unverified) == 5
+    assert unverified[0]["verification"] == ["a claim has no doi"]
+
+
+def test_claims_with_no_doi_at_all_are_never_verified() -> None:
     claims = [{"claim_id": f"10.1-a-{c}", "category": c} for c in ("year", "title")]
     passing = [{"claim_id": c["claim_id"], "status": "pass"} for c in claims]
-    assert split_claims.split(claims, passing)[0] == claims
-    assert split_claims.split(claims, passing[:1])[0] == []
+    assert split_claims.split(claims, passing)[0] == []
+
+
+def test_one_paper_never_lands_in_both_files() -> None:
+    """Whatever is wrong with one claim, its paper's other claims follow it."""
+    claims = claims_for("10.1/a") + claims_for("10.1/b")
+    del claims[1]["doi"]
+    claims[3]["doi"] = "HTTPS://DOI.ORG/10.1/A"
+    corrections = verdicts_for("10.1/a") + verdicts_for("10.1/b")
+    verified, unverified = split_claims.split(claims, corrections)
+    assert dois(verified) == {"10.1/b"}
+    assert len(unverified) == 5
+
+
+def test_claims_sharing_an_identifier_but_naming_two_dois_are_unverified() -> None:
+    claims = claims_for("10.1/a")
+    claims[4]["doi"] = "10.1/other"
+    verified, unverified = split_claims.split(claims, verdicts_for("10.1/a"))
+    assert verified == [] and len(unverified) == 5
 
 
 # ---------------------------------------------------------------------------
