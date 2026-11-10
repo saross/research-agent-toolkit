@@ -34,8 +34,9 @@ The skill works in any project. Reflections are always scoped to the
    to `docs/notes/reflections/`, relative to the project root. If none
    exists, propose the starting structure below and create it once the
    user agrees (`wiki/reflections/` unless they choose another place).
-3. **Tag each entry** with the project name and the session date in its
-   header, so entries are unambiguous when read out of context.
+3. **Tag each entry** with the session date in its heading, in the form
+   the document uses, and name the project in the entry's first lines,
+   so entries are unambiguous when read out of context.
 
 ## Starting structure (new projects)
 
@@ -81,16 +82,10 @@ contract:
 - **Heading:** `## Entry N — YYYY-MM-DD: <title>`, continuing the file's
   numbering.
 - **First two lines of every entry (mandatory):**
-  - `**Session:** <session-id>`. Get the current session's ID from the
-    newest transcript for this project: `ls -t
-    ~/.claude/projects/<project-folder>/*.jsonl | head -1`, where the
-    folder's name is the working directory's full path with every
-    character other than a letter, digit, or hyphen replaced by `-`
-    (so `/srv/survey/.notes/x` becomes `-srv-survey--notes-x`); if no
-    folder matches, list `~/.claude/projects/` and find it. The ID is
-    the file name without `.jsonl`. If it really can't be found, or
-    several transcripts there changed in the last few minutes (another
-    session may be running), write `unrecorded`. Never guess.
+  - `**Session:**` and this session's ID, which Claude Code gives
+    here: `${CLAUDE_SESSION_ID}`. If that is still an unfilled
+    placeholder (a dollar sign, a brace, and the words
+    `CLAUDE_SESSION_ID`), write `unrecorded`. Never guess.
   - `**Instance:** primary` (the default), or `post-compaction` or
     `continuation-from-summary` when this instance did not directly
     experience the episode.
