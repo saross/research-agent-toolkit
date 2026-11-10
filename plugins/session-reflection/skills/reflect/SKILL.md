@@ -81,9 +81,12 @@ contract:
   - `**Session:** <session-id>`. Get the current session's ID from the
     newest transcript for this project: `ls -t
     ~/.claude/projects/<project-folder>/*.jsonl | head -1`, where the
-    folder is the working directory's path with each `/` replaced by
-    `-`; the ID is the file name without `.jsonl`. If it really can't
-    be found, write `unrecorded`. Never guess.
+    folder's name is the working directory's full path with every
+    character other than a letter, digit, or hyphen replaced by `-`
+    (so `/srv/survey/.notes/x` becomes `-srv-survey--notes-x`); if no
+    folder matches, list `~/.claude/projects/` and find it. The ID is
+    the file name without `.jsonl`. If it really can't be found, write
+    `unrecorded`. Never guess.
   - `**Instance:** primary` (the default), or `post-compaction` or
     `continuation-from-summary` when this instance did not directly
     experience the episode.
