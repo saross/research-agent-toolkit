@@ -30,6 +30,9 @@ Core invariants (don't weaken them in orchestration):
 
 - **Fresh-context panel:** each lens reads only the target artefacts.
   Never paste the drafting conversation's context into lens prompts.
+  Claude Code still gives each agent the user's own `CLAUDE.md` and
+  memory; the prompts tell the agents to use them for language and
+  conventions only, and Step 4 checks that they did.
 - **Deterministic verdict:** computed from finding severities, including
   the mechanical pre-pass. No agent's opinion, including the
   meta-reviewer's, ever overrides it.
@@ -167,7 +170,10 @@ fix would have broken correct text. Before the report ships:
    section (about a page or less), most findings share a line with another, and the
    flag says little: rank by distinct issues that more than one lens raised instead,
    and say so in the report.
-4. Check every strength you present in the same way. A strength that rests on an
+4. Drop any finding, note, or blind spot that draws on the user's own
+   instructions or memory (facts about the author, their places, projects,
+   or other work) rather than on the artefacts, and list it with the kills.
+5. Check every strength you present in the same way. A strength that rests on an
    unresolved citation or a misread line could protect the wrong text: drop it, and
    list it with the kills.
 

@@ -293,6 +293,11 @@ grep hit, citekey, or verbatim quote) — no anchor, no finding.`
 }
 
 // --- Shared prompt scaffolding ----------------------------------------------
+const STANDING_INSTRUCTIONS_CAUTION = `Your context may also hold the user's standing instructions or memories (for example a
+CLAUDE.md). Follow them for language and conventions only. They are not evidence about this
+paper: never bring a fact from them (about the author, their places, projects, or other work)
+into a finding, a note, a strength, or a blind spot.`
+
 function commonBrief(targetOrTargets) {
   const targets = Array.isArray(targetOrTargets) ? targetOrTargets : [targetOrTargets]
   const rulings = rulingsBlock(targets)
@@ -305,9 +310,14 @@ function commonBrief(targetOrTargets) {
   if (Array.isArray(A.readOnlyContext) && A.readOnlyContext.length) {
     context.push(`You MAY also consult (read-only): ${A.readOnlyContext.join(', ')}`)
   }
-  context.push(`Do NOT read any other draft, notes, or planning file — you are a fresh-context
-reviewer and your independence is the point. If it's not in the artefacts named here, it
-doesn't count.`)
+  context.push(`Read ONLY the files named in this prompt: no other draft, notes, planning,
+build, or log file. You are a fresh-context reviewer and your independence is the point; if
+it's not in the artefacts named here, it doesn't count. (Labels and citations may already
+have been checked against the .aux and .bib files by the mechanical pre-pass.)`)
+  // A real run found every agent carrying the user's own CLAUDE.md, and the
+  // meta-reviewer naming places from it in a paper whose rulings kept the
+  // site unnamed.
+  context.push(STANDING_INSTRUCTIONS_CAUTION)
   if (rulings) {
     context.push(`SETTLED RULINGS REGISTER (author-settled — do NOT re-flag these; they are closed.
 Report one ONLY if the prose has DRIFTED from the recorded ruling, and mark that finding
@@ -359,8 +369,8 @@ produced false "uncited" findings before).`,
   lenses.push({
     key: 'consistency',
     prompt: `LENS: INTERNAL CONSISTENCY & ONCE-AND-ONLY-ONCE.
-(1) Contradictions: does this section contradict itself${SCOPE === 'paper'
-      ? ' or any other section in the target list' : ''}? Numbers, claims, terminology.
+(1) Contradictions: does this section contradict itself? Numbers, claims, terminology.
+    (Contradictions between sections are the cross-section synthesis's job; you see one.)
 (2) Once-and-only-once: each concept introduced once and covered thoroughly — no
     redundancy, no gap. IMPORTANT: a duplication finding is a POLICY QUESTION, not
     automatically a defect — where a guard says "don't restate X" but the author has
@@ -368,8 +378,9 @@ produced false "uncited" findings before).`,
     for the author to rule on; treat only objective breaches (identical strings, verbatim
     cross-section echoes) as defects.
 (3) Cross-references: does every \\ref{} target the right place? Distinguish wrong-level
-    refs (defect) from deliberate section-level refs (fine). An undefined-but-forthcoming
-    label is EXPECTED while drafting — not a defect.
+    refs (defect) from deliberate section-level refs (fine). ${STANCE === 'adversarial'
+      ? 'This draft is presented as finished, so an undefined label IS a defect.'
+      : 'An undefined-but-forthcoming label is EXPECTED while drafting — not a defect.'}
 (4) Dangling references, orphaned definitions, terms used before introduction.`,
   })
 
@@ -765,6 +776,8 @@ of fresh-context sceptic lenses has reviewed ${TARGETS.length} section(s) of a m
 (repo: ${REPO}; targets: ${TARGETS.join(', ')}). Your job is to review the REVIEWS —
 adversarially — before the report reaches the author. You may read the target file(s) to
 check a finding, but your subject is the panel's findings, not the manuscript.
+
+${STANDING_INSTRUCTIONS_CAUTION}
 ${metaContext()}
 
 For EACH finding below, classify its trustworthiness:

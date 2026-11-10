@@ -462,3 +462,37 @@ class TestAmbiguousAnchorNames:
         result = self._run(tmp_path, [f"{REPO}/a/notes.tex"])
         assert [g["token"] for g in result["convergenceGroups"]] == ["line:a/notes.tex:5"]
 
+
+class TestFreshContextPrompts:
+    """Found by a real run: standing instructions leaked into a review, and lenses strayed."""
+
+    def test_every_agent_is_told_standing_instructions_are_not_evidence(
+        self, tmp_path: Path,
+    ) -> None:
+        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
+                "stance": "adversarial"}
+        report = run(tmp_path, args)
+        for call in report["calls"]:
+            assert "They are not evidence about this" in call["prompt"], call["label"]
+
+    def test_lenses_read_only_the_files_named(self, tmp_path: Path) -> None:
+        lens = next(c for c in run(tmp_path, base_args())["calls"] if c["phase"] == "Review")
+        assert "Read ONLY the files named in this prompt" in lens["prompt"]
+
+    def test_consistency_lens_is_not_asked_about_sections_it_cannot_see(
+        self, tmp_path: Path,
+    ) -> None:
+        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO}
+        report = run(tmp_path, args)
+        prompt = next(c["prompt"] for c in report["calls"]
+                      if c["label"].startswith("consistency"))
+        assert "any other section in the target list" not in prompt
+
+    def test_undefined_labels_depend_on_the_stance(self, tmp_path: Path) -> None:
+        def consistency(stance: str) -> str:
+            report = run(tmp_path, base_args(stance=stance))
+            return next(c["prompt"] for c in report["calls"]
+                        if c["label"].startswith("consistency"))
+        assert "undefined label IS a defect" in consistency("adversarial")
+        assert "EXPECTED while drafting" in consistency("critical-friend")
+
