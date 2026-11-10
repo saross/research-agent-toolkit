@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["httpx>=0.27"]
+# dependencies = ["httpx>=0.27", "bibtexparser>=1.4,<2"]
 # ///
 """
 Academic literature search CLI for the lit-scout agent.
@@ -17,8 +17,8 @@ Usage:
     lit-search.py search "QUERY"
     lit-search.py openalex-cited-by DOI
 
-Requires: httpx. The `lit-search` wrapper beside this file runs it through `uv`, which installs
-httpx on first use.
+Requires: httpx, and bibtexparser 1.x for the bibtex subcommand. The `lit-search` wrapper
+beside this file runs it through `uv`, which installs both on first use.
 No API keys required — uses free tiers and polite pool headers.
 """
 
@@ -36,7 +36,11 @@ import urllib.parse
 from collections.abc import Callable
 from typing import Any
 
+import bibtexparser
 import httpx
+from bibtexparser.bibdatabase import BibDatabase
+from bibtexparser.bparser import BibTexParser
+from bibtexparser.bwriter import BibTexWriter
 
 # ============================================================================
 # Configuration
@@ -1445,75 +1449,71 @@ def cmd_bibtex(
 #: The citation key of a BibTeX entry: "@type{key," on the opening line.
 _BIBTEX_KEY = re.compile(r"^(@\w+\s*[{(])([^,]+)(,)", re.MULTILINE)
 
-#: Entry types that are BibTeX directives, not bibliographic records.
-_BIBTEX_DIRECTIVES = frozenset({"comment", "string", "preamble"})
-#: The opening of an entry: "@type{" or "@type(".
-_BIBTEX_OPEN = re.compile(r"@\s*([A-Za-z]+)\s*([{(])")
-#: A citation key and the comma after it, at the start of an entry's body.
-_BIBTEX_CITE_KEY = re.compile(r"\s*([^\s,{}()=\"#%]+)\s*,")
+#: Month macros that registries write beyond BibTeX's standard three letters,
+#: which bibtexparser already knows. CrossRef writes "month=Sept" (found by a
+#: real run of 0.3.1); names are matched without regard to case.
+_EXTRA_MONTH_MACROS = {
+    "sept": "September",
+    **{name.lower(): name for name in (
+        "January", "February", "March", "April", "May", "June", "July",
+        "August", "September", "October", "November", "December",
+    )},
+}
 
 
-def _bibtex_close(text: str, start: int, opener: str) -> int | None:
+def _starts_as_bibtex(text: str) -> bool:
     """
-    Return the index just past the delimiter closing an entry, or None.
+    True if the first line that is neither blank nor a "%" comment begins with "@".
 
-    ``start`` is the first character after the entry's opening delimiter.
-    Braces inside the entry must balance, as BibTeX itself requires; an entry
-    opened with "(" closes at the first ")" outside any braces.
+    A cheap guard before parsing: an HTML landing page, or any other prose,
+    is not BibTeX even if a record appears somewhere inside it.
     """
-    depth = 0
-    for i in range(start, len(text)):
-        char = text[i]
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            if depth == 0:
-                return i + 1 if opener == "{" else None
-            depth -= 1
-        elif char == ")" and opener == "(" and depth == 0:
-            return i + 1
-    return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("%"):
+            continue
+        return stripped.startswith("@")
+    return False
 
 
 def _bibtex_record(text: str) -> str | None:
     """
-    Return the first complete bibliographic record in ``text``, or None.
+    Return one complete bibliographic record from a registry's answer, or None.
 
-    A deliberately limited grammar (review finding R22, 0.3.1): a status 200
-    is not enough, and nor is a leading "@". Before the record only
-    whitespace, "%" comment lines, and the directives @comment, @string, and
-    @preamble may appear; they are skipped. Any other text first (an HTML
-    page, for one) means the answer is not BibTeX. The record itself must be
-    "@type{key, name = value, ...}" (or with parentheses): a citation key
-    followed by a comma, at least one field, and balanced braces up to the
-    closing delimiter. A directive alone, a lone "@", or a record cut off
-    before its closing brace is not a record.
+    Parsed with bibtexparser 1.x, not by hand (review findings R22 and R24,
+    0.3.1: a hand-written grammar cut a quoted ")" short, accepted an empty
+    value, and dropped @string definitions that a field relied on). The
+    answer must begin, after blank and "%" comment lines, with "@". The
+    record returned is the first entry with a citation key and at least one
+    field, every field non-empty. @string macros (and the standard month
+    names) are expanded into the fields, so the record stands alone in a
+    .bib file shared with other DOIs; an undefined macro, a parse error, a
+    directive alone, or a truncated record gives None, and the caller tries
+    the next source. The record is written out again by bibtexparser, so its
+    layout (field order, indentation) is the library's, not the registry's.
     """
-    pos, size = 0, len(text)
-    while pos < size:
-        char = text[pos]
-        if char.isspace():
-            pos += 1
+    if not _starts_as_bibtex(text):
+        return None
+    # A fresh parser for every answer: a parser object accumulates entries
+    # across calls. Non-standard types (@dataset, @software) are kept, since
+    # DataCite uses them.
+    parser = BibTexParser(common_strings=True, ignore_nonstandard_types=False)
+    parser.bib_database.strings.update(_EXTRA_MONTH_MACROS)
+    try:
+        database = bibtexparser.loads(text, parser=parser)
+    except Exception as exc:  # noqa: BLE001 — any parse failure means "no record"
+        log.debug("bibtex: answer did not parse: %s", type(exc).__name__)
+        return None
+    for entry in database.entries:
+        fields = {k: v for k, v in entry.items() if k not in ("ID", "ENTRYTYPE")}
+        key = str(entry.get("ID", "")).strip()
+        if not key or not fields or not all(str(v).strip() for v in fields.values()):
             continue
-        if char == "%":
-            newline = text.find("\n", pos)
-            pos = size if newline == -1 else newline + 1
-            continue
-        match = _BIBTEX_OPEN.match(text, pos)
-        if match is None:
-            return None
-        kind, opener = match.group(1).lower(), match.group(2)
-        end = _bibtex_close(text, match.end(), opener)
-        if end is None:
-            return None
-        if kind in _BIBTEX_DIRECTIVES:
-            pos = end
-            continue
-        body = text[match.end():end - 1]
-        key = _BIBTEX_CITE_KEY.match(body)
-        if key is None or "=" not in body[key.end():]:
-            return None
-        return text[match.start():end]
+        single = BibDatabase()
+        single.entries = [entry]
+        writer = BibTexWriter()
+        writer.indent = "  "
+        return bibtexparser.dumps(single, writer).strip()
     return None
 
 
