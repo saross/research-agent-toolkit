@@ -22,17 +22,21 @@ Two files beside this skill do the work:
   says so);
 - the panel, a Claude Code workflow script,
   `${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs`. It needs Claude Code's
-  Workflow tool (dynamic workflows). If that tool isn't available in this
-  session, say so and stop after the pre-pass: don't imitate the panel by
-  hand, because its verdict is computed by the script.
+  Workflow tool (dynamic workflows), and the session must be able to read
+  this plugin's `scripts/` folder (Step 3). If either is missing, say so
+  and stop after the pre-pass: don't imitate the panel by hand, because
+  its verdict is computed by the script.
 
 Core invariants (don't weaken them in orchestration):
 
 - **Fresh-context panel:** each lens reads only the target artefacts.
   Never paste the drafting conversation's context into lens prompts.
   Claude Code still gives each agent the user's own `CLAUDE.md` and
-  memory; the prompts tell the agents to use them for language and
-  conventions only, and Step 4 checks that they did.
+  memory. The prompts tell the agents to keep following standing rules
+  (permission, safety, language) but never to use biographical details
+  or facts about the user's places, projects, or other work as evidence,
+  and Step 4 checks for any that got through. This reduces and checks
+  for contamination; it does not guarantee isolation.
 - **Deterministic verdict:** computed from finding severities, including
   the mechanical pre-pass. No agent's opinion, including the
   meta-reviewer's, ever overrides it.
@@ -106,8 +110,7 @@ and 4–6 minutes wall-clock.
 
 A whole-paper adversarial run is a deliberate pre-submission spend, not
 routine. On a subscription plan these tokens draw on the user's usage
-limits. If the dispatch below has to pass the script inline, add about
-10,000 output tokens in this session for the copy.
+limits.
 
 ## Step 3: dispatch
 
@@ -116,33 +119,22 @@ The arguments are those the script's header lists, as a JSON object
 the workflow sandbox has no clock), plus `prepassFindings` and
 `settledRulings` from Step 1.
 
-The Workflow tool loads a script by path only from the working
-directory, a directory added to the session, or a file the tool itself
-saved; this plugin's folder is usually none of these. So:
+Call the Workflow tool with `scriptPath` set to
+`${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs` and the arguments.
 
-1. **Try the path first.** Call the Workflow tool with `scriptPath` set
-   to `${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs` and the
-   arguments. This works when the user has added the plugin's folder to
-   their session's directories; the panel then runs from the plugin's
-   own file.
-2. **If the path is refused** (the error says the script path must be
-   one the tool returned or a file you can already read), **prepare
-   without running.** Read the script in full, and call the Workflow
-   tool with `script` set to its exact contents, character for
-   character, and the arguments `{"prepareOnly": true}` only. The script
-   returns at once, before any agent can start, and the tool's result
-   names the script file it saved. Don't shorten, reformat, or correct
-   anything in the script, and never copy it into the user's repository.
-3. **Check the saved copy before anything runs.** Compare the saved
-   file with the bundled one (`cmp` the two paths). If they differ, the
-   copy is wrong: prepare again. If a second copy also differs, stop,
-   and tell the user to add the plugin's folder to the session (for
-   example `/add-dir` with the folder that holds this skill's
-   `scripts/`), naming the folder.
-4. **Run the checked copy.** Call the Workflow tool with `scriptPath`
-   set to the saved file's path (the tool accepts a path it returned)
-   and the real arguments. No agent has run before this call, so the
-   approval from Step 2 covers it.
+The tool loads a script by path only from the working directory or a
+directory added to the session, so this works only when the user has
+added the plugin's folder. **If the path is refused** (the error says
+the script path must be one the tool returned or a file you can already
+read), stop. Tell the user the panel needs that folder, and give its
+exact path, the folder holding the script above. They can add it for
+this session with `/add-dir` and that path, or for every session by
+listing it (or the plugin cache folder above it, which also covers
+later versions) under `permissions.additionalDirectories` in their user
+settings. Then try the same path again. Don't change their settings
+yourself, and don't pass the script inline or copy it anywhere: a copy
+can't be checked before it runs, so the panel would not be this
+plugin's panel.
 
 A run that has to be repeated, for any reason, goes back through
 Step 2: approval covers one run.

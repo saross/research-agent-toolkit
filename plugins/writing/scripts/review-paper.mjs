@@ -42,10 +42,6 @@
  *   REQUIRED
  *     targets        [string]  absolute paths of the section .tex files
  *     repo           string    absolute paper-repo root (agents' working dir)
- *   ALONE
- *     prepareOnly    true      return {prepared: true} at once, before any agent:
- *                              the skill's way to have the tool save an inline
- *                              copy, which it checks before the real run
  *   OPTIONAL
  *     stance         'critical-friend' (default) | 'adversarial'
  *     scope          'section' | 'paper' (default: 'section' iff 1 target)
@@ -96,14 +92,6 @@ if (typeof A === 'string') {
 }
 if (!A || typeof A !== 'object' || Array.isArray(A)) {
   throw new Error('review-paper: args must be an object — see the script header.')
-}
-// Prepare-only call (review finding R27). When the Workflow tool can't load
-// this file by path, the skill passes the script inline once with
-// {prepareOnly: true}: the tool saves the script and names the saved file,
-// the skill compares that file with the bundled script, and only then runs the
-// saved file by path. This return comes before any agent can start.
-if (A.prepareOnly === true) {
-  return { prepared: true }
 }
 const TARGETS = A.targets
 if (!Array.isArray(TARGETS) || !TARGETS.length) {
@@ -294,9 +282,11 @@ grep hit, citekey, or verbatim quote) — no anchor, no finding.`
 
 // --- Shared prompt scaffolding ----------------------------------------------
 const STANDING_INSTRUCTIONS_CAUTION = `Your context may also hold the user's standing instructions or memories (for example a
-CLAUDE.md). Follow them for language and conventions only. They are not evidence about this
-paper: never bring a fact from them (about the author, their places, projects, or other work)
-into a finding, a note, a strength, or a blind spot.`
+CLAUDE.md). Follow applicable standing instructions, including permission, ownership,
+approval, safety, and language rules. Biographical details, memories, and facts about the
+user's places, projects, or other work are not evidence about this paper: do not introduce
+them into findings, notes, strengths, or blind spots unless the named review artefacts
+independently supply them.`
 
 function commonBrief(targetOrTargets) {
   const targets = Array.isArray(targetOrTargets) ? targetOrTargets : [targetOrTargets]
