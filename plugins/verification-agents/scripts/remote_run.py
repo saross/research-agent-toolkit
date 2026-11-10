@@ -20,24 +20,38 @@ resets, rebases, or force-pushes, on either machine.
 
 What it checks before it changes anything:
 
-- here: the script is inside a git repository; the branch has an upstream;
-  after a fetch, the branch is level with it (nothing unpushed, nothing to
-  pull); and the working tree and index hold no change other than the
-  script itself;
-- there: the folder is a clone of a repository on the same branch, at the
-  same commit, with a clean working tree and index.
+- here: the script is inside a git repository; the branch has an upstream
+  branch of the same remote for fetching and pushing; that remote is not a
+  mirror; after a fetch, the branch is level with it (nothing unpushed,
+  nothing to pull); and the working tree and index hold no change other
+  than the script itself;
+- there: the folder is a clone on the same branch, tracking the same
+  branch name, at the same commit, with a clean working tree and index.
 
 What it then does, checking each step:
 
-1. commits the script alone (a commit limited to that path) and pushes it;
-2. there: fast-forwards, confirms the clone is at exactly that commit, and
+1. commits the script alone (a commit limited to that path), and confirms
+   the new commit has the starting commit as its only parent and changes
+   that one file;
+2. pushes that one commit, by its hash, to the one upstream branch;
+3. there: fetches that branch, fast-forwards to exactly that commit, and
    runs the script with the given interpreter, from the clone's root;
-3. there: reads the manifest the script wrote (`outputs.manifest` in the
-   output folder: one path per line, relative to that folder), confirms
-   every listed file exists inside the output folder, commits exactly those
-   files and the manifest, and pushes;
-4. here: fast-forwards and confirms the branch is at exactly the commit
-   made in step 3.
+4. there: confirms the clone is still on the same branch at the script
+   commit, so that nobody else's commit has arrived meanwhile; reads the
+   manifest the script wrote (`outputs.manifest` in the output folder: one
+   path per line, relative to that folder); commits exactly those files and
+   the manifest; and confirms the new commit has the script commit as its
+   only parent and changes exactly those files;
+5. there: pushes that one commit, by its hash, to the one upstream branch;
+6. here: fetches that branch, confirms it is at exactly that commit, and
+   fast-forwards to it.
+
+**What is published.** Each push names one commit hash and one branch
+(`git push REMOTE HASH:refs/heads/BRANCH`), so no other branch, tag, or
+configured push rule takes part, and each commit's parent is checked first,
+so the push adds that single commit and nothing behind it. Push hooks run
+as usual. If another writer commits in either clone during the exchange, a
+parent or position check fails and the exchange stops before the next push.
 
 It prints the two commit hashes. Paths are worked out relative to each
 clone's root, so the two clones may live in different places.
@@ -72,9 +86,16 @@ class Stop(Exception):
     """A check failed; the message says what, and nothing more is attempted."""
 
 
-def run(argv: list[str], cwd: Path) -> str:
+def run(argv: list[str], cwd: Path, raw: bool = False) -> str:
     """
-    Run a command here and return its standard output, stripped.
+    Run a command here and return its standard output.
+
+    Args:
+        argv: The command.
+        cwd: Where to run it.
+        raw: Return the output exactly as printed. Otherwise it is stripped
+            of surrounding whitespace, which suits single values such as a
+            hash but would damage output whose leading spaces carry meaning.
 
     Raises:
         Stop: If the command exits with an error; the message carries the
@@ -83,7 +104,7 @@ def run(argv: list[str], cwd: Path) -> str:
     done = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
     if done.returncode != 0:
         raise Stop(f"`{shlex.join(argv)}` failed here:\n{(done.stderr or done.stdout).strip()}")
-    return done.stdout.strip()
+    return done.stdout if raw else done.stdout.strip()
 
 
 class Remote:
@@ -129,18 +150,93 @@ def relative_to_root(path: Path, root: Path, what: str) -> str:
         raise Stop(f"the {what} ({path}) is not inside the repository at {root}") from error
 
 
-def other_changes(status: str, allowed: str) -> list[str]:
+def changed_paths(status: str) -> list[tuple[str, str]]:
     """
-    Return the lines of `git status --porcelain` that are not the allowed path.
+    Parse `git status --porcelain=v1 -z` into (state, path) pairs.
+
+    With `-z`, entries end in a NUL and paths are given as they are, with no
+    quoting, so a path with spaces or non-ASCII characters is read exactly.
+    Each entry is two state characters, a space, and the path; a rename or
+    copy is followed by one more entry holding the path it came from.
 
     Args:
-        status: Output of `git status --porcelain --untracked-files=all`.
+        status: The command's output, unmodified.
+
+    Returns:
+        One pair per changed path. The source of a rename or copy is
+        reported as a change of its own, with the state "from".
+    """
+    found: list[tuple[str, str]] = []
+    entries = iter(status.split("\0"))
+    for entry in entries:
+        if not entry:
+            continue
+        state, path = entry[:2], entry[3:]
+        found.append((state, path))
+        if "R" in state or "C" in state:
+            found.append(("from", next(entries, "")))
+    return found
+
+
+def other_changes(status: str, allowed: str) -> list[str]:
+    """
+    Return the changes in a repository other than the one allowed path.
+
+    Args:
+        status: Output of `git status --porcelain=v1 -z --untracked-files=all`.
         allowed: The one path, relative to the root, that may be changed.
 
     Returns:
-        The status lines for every other path.
+        A line for every other changed path: its state and the path.
     """
-    return [line for line in status.splitlines() if line.strip() and line[3:] != allowed]
+    return [f"{state} {path}" for state, path in changed_paths(status) if path != allowed]
+
+
+def upstream_of(branch: str, get) -> tuple[str, str]:
+    """
+    Return the remote and the full branch ref that a branch tracks.
+
+    Args:
+        branch: The local branch name.
+        get: A function that runs a git command (as an argument list after
+            `git`) in the clone and returns its stripped output.
+
+    Returns:
+        The remote's name and the ref on it, such as `refs/heads/main`.
+
+    Raises:
+        Stop: If the branch tracks nothing, tracks a local branch, or the
+            remote is a mirror or pushes somewhere other than it fetches from.
+    """
+    remote = get(["config", "--get", f"branch.{branch}.remote"])
+    ref = get(["config", "--get", f"branch.{branch}.merge"])
+    if not remote or remote == "." or not ref.startswith("refs/heads/"):
+        raise Stop(f"branch {branch} does not track a branch on a remote")
+    if get(["config", "--default", "false", "--get", f"remote.{remote}.mirror"]) == "true":
+        raise Stop(f"remote {remote} is a mirror; refusing to push to it")
+    if get(["remote", "get-url", remote]) != get(["remote", "get-url", "--push", remote]):
+        raise Stop(f"remote {remote} pushes to a different place from where it fetches")
+    return remote, ref
+
+
+def require_single_commit(get, commit: str, parent: str, paths: list[str], where: str) -> None:
+    """
+    Confirm a commit adds exactly the given paths on top of one given parent.
+
+    Raises:
+        Stop: If the commit has another parent, more than one, or changes
+            any other path.
+    """
+    parents = get(["rev-list", "--parents", "-n", "1", commit]).split()[1:]
+    if parents != [parent]:
+        raise Stop(
+            f"{where}: commit {commit[:12]} does not sit directly on {parent[:12]} "
+            f"(its parents: {[p[:12] for p in parents]}); something else was committed meanwhile"
+        )
+    changed = sorted(p for p in get(
+        ["diff", "--name-only", "-z", parent, commit]).split("\0") if p)
+    if changed != sorted(paths):
+        raise Stop(f"{where}: commit {commit[:12]} changes {changed}, expected {sorted(paths)}")
 
 
 def read_manifest(text: str) -> list[str]:
@@ -173,9 +269,14 @@ def read_manifest(text: str) -> list[str]:
     return paths
 
 
-def transact(args: argparse.Namespace) -> tuple[str, str]:
+def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, str]:
     """
     Carry out the exchange described in the module docstring.
+
+    Args:
+        args: The parsed command line.
+        progress: Filled in as each step completes, so that a stop can
+            report exactly what had been committed and pushed by then.
 
     Returns:
         The script commit and the output commit.
@@ -191,73 +292,102 @@ def transact(args: argparse.Namespace) -> tuple[str, str]:
     output_rel = relative_to_root(Path(args.output_dir), root, "output folder")
     remote = Remote(args.runner, args.host, args.workdir)
 
+    def here(argv: list[str]) -> str:
+        return run(["git", *argv], root)
+
+    def there(argv: list[str]) -> str:
+        return remote.run(["git", *argv])
+
     # ---- checks here ---------------------------------------------------------
-    branch = run(["git", "symbolic-ref", "--short", "HEAD"], root)
-    upstream = run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], root)
-    run(["git", "fetch", "--quiet"], root)
-    head = run(["git", "rev-parse", "HEAD"], root)
-    if run(["git", "rev-parse", "@{u}"], root) != head:
+    branch = here(["symbolic-ref", "--short", "HEAD"])
+    origin, ref = upstream_of(branch, here)
+    here(["fetch", "--quiet", origin, ref])
+    head = here(["rev-parse", "HEAD"])
+    if here(["rev-parse", "FETCH_HEAD"]) != head:
         raise Stop(
-            f"branch {branch} is not level with {upstream} here: push or pull first, so that "
-            "this run publishes nothing but its own two commits"
+            f"branch {branch} is not level with {ref} on {origin} here: push or pull first, "
+            "so that this run publishes nothing but its own two commits"
         )
-    status = run(["git", "status", "--porcelain", "--untracked-files=all"], root)
+    status = run(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"], root, raw=True)
     extra = other_changes(status, script_rel)
     if extra:
         raise Stop(
             "the repository here has other changes; commit or set them aside first:\n"
             + "\n".join(extra)
         )
-    if not status.strip():
+    if not changed_paths(status):
         raise Stop(f"{script_rel} has no change to commit; has this script already been run?")
 
     # ---- checks there --------------------------------------------------------
-    there_branch = remote.run(["git", "symbolic-ref", "--short", "HEAD"])
-    if there_branch != branch:
-        raise Stop(f"the other clone is on branch {there_branch}, not {branch}")
-    there_status = remote.run(["git", "status", "--porcelain", "--untracked-files=all"])
-    if there_status.strip():
-        raise Stop("the other clone has uncommitted changes:\n" + there_status)
-    if remote.run(["git", "rev-parse", "HEAD"]) != head:
+    if there(["symbolic-ref", "--short", "HEAD"]) != branch:
+        raise Stop(f"the other clone is not on branch {branch}")
+    there_origin, there_ref = upstream_of(branch, there)
+    if there_ref != ref:
+        raise Stop(f"the other clone's branch tracks {there_ref}, not {ref}")
+    if there(["status", "--porcelain=v1", "--untracked-files=all"]):
+        raise Stop("the other clone has uncommitted changes; nothing was committed")
+    if there(["rev-parse", "HEAD"]) != head:
         raise Stop(f"the other clone is not at {head[:12]}, the commit this one is at")
 
-    # ---- 1. commit the script alone, and push --------------------------------
-    run(["git", "add", "--", script_rel], root)
-    run(["git", "commit", "--quiet", "-m", f"Add profile script {script_rel}", "--", script_rel],
-        root)
-    script_commit = run(["git", "rev-parse", "HEAD"], root)
-    changed = run(["git", "diff", "--name-only", head, script_commit], root).splitlines()
-    if changed != [script_rel]:
-        raise Stop(f"the script commit {script_commit[:12]} holds more than the script: {changed}")
-    run(["git", "push", "--quiet"], root)
+    # ---- 1. commit the script alone ------------------------------------------
+    here(["add", "--", script_rel])
+    here(["commit", "--quiet", "-m", f"Add profile script {script_rel}", "--", script_rel])
+    script_commit = here(["rev-parse", "HEAD"])
+    progress["script commit (here, not yet pushed)"] = script_commit
+    require_single_commit(here, script_commit, head, [script_rel], "here")
 
-    # ---- 2. run it there, at exactly that commit -----------------------------
-    remote.run(["git", "pull", "--quiet", "--ff-only"])
-    if remote.run(["git", "rev-parse", "HEAD"]) != script_commit:
-        raise Stop(f"the other clone did not arrive at the script commit {script_commit[:12]}")
+    # ---- 2. push that one commit to the one branch ---------------------------
+    here(["push", "--quiet", "--no-follow-tags", origin, f"{script_commit}:{ref}"])
+    del progress["script commit (here, not yet pushed)"]
+    progress["script commit (pushed)"] = script_commit
+
+    # ---- 3. run it there, at exactly that commit -----------------------------
+    there(["fetch", "--quiet", there_origin, ref])
+    if there(["rev-parse", "FETCH_HEAD"]) != script_commit:
+        raise Stop(
+            f"the other clone's remote does not hold the script commit {script_commit[:12]} "
+            f"on {ref}: the two clones do not share a remote, or someone pushed meanwhile"
+        )
+    there(["merge", "--quiet", "--ff-only", script_commit])
     remote.run([args.python, script_rel])
 
-    # ---- 3. commit exactly the listed outputs there, and push ----------------
+    # ---- 4. commit exactly the listed outputs there --------------------------
+    if there(["symbolic-ref", "--short", "HEAD"]) != branch or \
+            there(["rev-parse", "HEAD"]) != script_commit:
+        raise Stop(
+            "the other clone moved while the script ran (another commit or branch); "
+            "no outputs were committed"
+        )
     manifest_rel = f"{output_rel}/{MANIFEST}"
     listed = read_manifest(remote.run(["cat", "--", manifest_rel]))
     outputs = [f"{output_rel}/{path}" for path in listed if path != MANIFEST] + [manifest_rel]
     remote.run(["ls", "-d", "--", *outputs])  # fails if any listed file is missing
-    remote.run(["git", "add", "--", *outputs])
-    staged = sorted(remote.run(["git", "diff", "--cached", "--name-only"]).splitlines())
+    there(["add", "--", *outputs])
+    staged = sorted(p for p in there(["diff", "--cached", "--name-only", "-z"]).split("\0") if p)
     if staged != sorted(outputs):
         raise Stop(
             "what is staged in the other clone is not exactly the listed outputs; nothing was "
             f"committed there.\nstaged: {staged}\nlisted: {sorted(outputs)}"
         )
-    remote.run(["git", "commit", "--quiet", "-m", f"Add profile outputs in {output_rel}",
-                "--", *outputs])
-    output_commit = remote.run(["git", "rev-parse", "HEAD"])
-    remote.run(["git", "push", "--quiet"])
+    there(["commit", "--quiet", "-m", f"Add profile outputs in {output_rel}", "--", *outputs])
+    output_commit = there(["rev-parse", "HEAD"])
+    progress["output commit (there, not yet pushed)"] = output_commit
+    require_single_commit(there, output_commit, script_commit, outputs, "the other clone")
 
-    # ---- 4. bring the outputs back -------------------------------------------
-    run(["git", "pull", "--quiet", "--ff-only"], root)
-    if run(["git", "rev-parse", "HEAD"], root) != output_commit:
-        raise Stop(f"this clone did not arrive at the output commit {output_commit[:12]}")
+    # ---- 5. push that one commit to the one branch ---------------------------
+    there(["push", "--quiet", "--no-follow-tags", there_origin, f"{output_commit}:{ref}"])
+    del progress["output commit (there, not yet pushed)"]
+    progress["output commit (pushed)"] = output_commit
+
+    # ---- 6. bring exactly that commit back -----------------------------------
+    here(["fetch", "--quiet", origin, ref])
+    if here(["rev-parse", "FETCH_HEAD"]) != output_commit:
+        raise Stop(
+            f"{ref} on {origin} is not at the output commit {output_commit[:12]}; "
+            "someone pushed meanwhile, and nothing was merged here"
+        )
+    here(["merge", "--quiet", "--ff-only", output_commit])
+    progress["outputs merged here"] = output_commit
     return script_commit, output_commit
 
 
@@ -274,10 +404,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.runner == "ssh" and (not args.host or args.host.startswith("-")):
         parser.error("--host is required, and may not begin with a dash")
+    progress: dict[str, str] = {}
     try:
-        script_commit, output_commit = transact(args)
+        script_commit, output_commit = transact(args, progress)
     except Stop as stop:
         print(f"remote_run: stopped. {stop}", file=sys.stderr)
+        if progress:
+            print("Done before the stop:", file=sys.stderr)
+            for step, commit in progress.items():
+                print(f"  {step}: {commit}", file=sys.stderr)
+        else:
+            print("Nothing had been committed or pushed.", file=sys.stderr)
         print(
             "Nothing was switched, cleaned, reset, or force-pushed. Check `git status` and "
             "`git log -3` in both clones before trying again.",

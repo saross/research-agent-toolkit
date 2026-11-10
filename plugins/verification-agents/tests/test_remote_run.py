@@ -72,11 +72,11 @@ def clones(tmp_path: Path) -> tuple[Path, Path]:
     return here, there
 
 
-def write_script(here: Path, manifest: str = GOOD_MANIFEST) -> Path:
+def write_script(here: Path, manifest: str = GOOD_MANIFEST, extra: str = "") -> Path:
     """Write the profile script into the first clone, uncommitted."""
     script = here / "runs" / "p1" / "code" / "profile.py"
-    script.parent.mkdir(parents=True)
-    script.write_text(PROFILE.format(manifest=manifest))
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text(PROFILE.format(manifest=manifest) + extra)
     return script
 
 
@@ -189,10 +189,12 @@ def test_a_script_outside_the_repository_is_refused(
 
 
 def test_helpers_for_status_and_manifest() -> None:
-    status = " M README.md\n?? runs/p1/code/profile.py\nA  staged.txt\n"
+    status = " M README.md\0?? runs/p1/code/profile.py\0A  staged.txt\0R  new name.md\0old.md\0"
     assert remote_run.other_changes(status, "runs/p1/code/profile.py") == [
-        " M README.md", "A  staged.txt",
+        " M README.md", "A  staged.txt", "R  new name.md", "from old.md",
     ]
+    # A sole modified, tracked script: its leading space must survive.
+    assert remote_run.other_changes(" M runs/p1/code/profile.py\0", "runs/p1/code/profile.py") == []
     assert remote_run.read_manifest("a.md\n\n a.md \ntables/b.csv\n") == ["a.md", "tables/b.csv"]
     with pytest.raises(remote_run.Stop):
         remote_run.read_manifest("ok.md\nsub/../../escape\n")
@@ -204,3 +206,139 @@ def test_ssh_needs_a_host_that_is_not_an_option(capsys: pytest.CaptureFixture[st
         with pytest.raises(SystemExit) as stop:
             remote_run.main([*host, *base])
         assert stop.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# Second review round: what a push may carry, and who else may be writing
+# ---------------------------------------------------------------------------
+
+
+def origin_refs(clone: Path) -> dict[str, str]:
+    """Return every ref the shared remote holds, by name."""
+    lines = git(clone, "ls-remote", "origin").splitlines()
+    return {name: commit for commit, name in (line.split("\t") for line in lines)}
+
+
+def test_a_configured_push_rule_cannot_publish_another_branch(clones: tuple[Path, Path]) -> None:
+    """`remote.origin.push` naming a side branch used to ride along on a plain push."""
+    here, there = clones
+    git(here, "checkout", "--quiet", "-b", "side")
+    (here / "private.txt").write_text("not for publication\n")
+    git(here, "add", "private.txt")
+    git(here, "commit", "--quiet", "-m", "side work")
+    git(here, "checkout", "--quiet", "main")
+    git(here, "config", "remote.origin.push", "refs/heads/side:refs/heads/side")
+
+    assert transact(here, there, write_script(here)) == 0
+    refs = origin_refs(here)
+    assert "refs/heads/side" not in refs
+    assert set(refs) == {"HEAD", "refs/heads/main"}
+
+
+def test_a_tag_is_not_pushed_along(clones: tuple[Path, Path]) -> None:
+    here, there = clones
+    git(here, "tag", "-a", "draft-1", "-m", "local tag")
+    git(here, "config", "push.followTags", "true")
+    assert transact(here, there, write_script(here)) == 0
+    assert not any(name.startswith("refs/tags/") for name in origin_refs(here))
+
+
+@pytest.mark.parametrize("fault", ["push-url", "mirror", "no-upstream"])
+def test_an_unsafe_remote_set_up_stops_before_any_commit(
+    clones: tuple[Path, Path], tmp_path: Path, fault: str
+) -> None:
+    here, there = clones
+    if fault == "push-url":
+        elsewhere = tmp_path / "elsewhere.git"
+        git(tmp_path, "init", "--quiet", "--bare", str(elsewhere))
+        git(here, "remote", "set-url", "--push", "origin", str(elsewhere))
+    elif fault == "mirror":
+        git(here, "config", "remote.origin.mirror", "true")
+    else:
+        git(here, "branch", "--unset-upstream")
+    start = git(here, "rev-parse", "HEAD")
+    assert transact(here, there, write_script(here)) == 1
+    assert git(here, "rev-parse", "HEAD") == start
+
+
+def test_a_commit_made_in_the_other_clone_during_the_run_stops_the_exchange(
+    clones: tuple[Path, Path], capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A second writer commits while the script runs; its work must not be pushed."""
+    here, there = clones
+    interfere = (
+        "import subprocess\n"
+        "Path('intruder.txt').write_text('someone else\\n')\n"
+        "subprocess.run(['git', 'add', 'intruder.txt'], check=True)\n"
+        "subprocess.run(['git', 'commit', '--quiet', '-m', 'unrelated'], check=True)\n"
+    )
+    script = write_script(here, extra=interfere)
+    assert transact(here, there, script) == 1
+    script_commit = git(here, "rev-parse", "HEAD")
+    # The remote branch holds the script commit and nothing after it.
+    assert origin_refs(here)["refs/heads/main"] == script_commit
+    assert not (here / "intruder.txt").exists()
+    err = capfd.readouterr().err
+    assert "moved while the script ran" in err
+    assert f"script commit (pushed): {script_commit}" in err
+    assert "output commit" not in err
+
+
+def test_a_push_by_someone_else_before_the_outputs_return_is_not_merged(
+    clones: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """If the branch moves on the remote after the outputs, nothing extra is merged here."""
+    here, there = clones
+    third = tmp_path / "third"
+    bare = git(here, "remote", "get-url", "origin")
+    # The script, running in the other clone, has a third clone push a commit
+    # that lands on top of the script commit before the outputs are pushed.
+    interfere = (
+        "import subprocess\n"
+        f"subprocess.run(['git', 'clone', '--quiet', {bare!r}, {str(third)!r}], check=True)\n"
+        f"(Path({str(third)!r}) / 'late.txt').write_text('late\\n')\n"
+        f"subprocess.run(['git', 'add', 'late.txt'], cwd={str(third)!r}, check=True)\n"
+        f"subprocess.run(['git', 'commit', '--quiet', '-m', 'late'], cwd={str(third)!r},"
+        " check=True)\n"
+        f"subprocess.run(['git', 'push', '--quiet'], cwd={str(third)!r}, check=True)\n"
+    )
+    assert transact(here, there, write_script(here, extra=interfere)) == 1
+    assert not (here / "late.txt").exists()
+    assert not (here / "runs/p1/out/summary.md").exists()  # the outputs were never pushed
+
+
+def test_a_tracked_script_that_was_only_modified_is_accepted(clones: tuple[Path, Path]) -> None:
+    """Review finding R19: revising a script that is already committed."""
+    here, there = clones
+    assert transact(here, there, write_script(here)) == 0
+    script = write_script(here, manifest="summary.md\n", extra="# revised\n")
+    (here / "runs/p1/out/summary.md").unlink()  # make the rerun's output differ
+    git(here, "commit", "--quiet", "-am", "clear old output")
+    git(here, "push", "--quiet")
+    git(there, "pull", "--quiet", "--ff-only")
+    # The first run left an unlisted file in the other clone, which would
+    # rightly stop the next run; a careful script lists everything it writes.
+    (there / "runs/p1/out/scratch.tmp").unlink()
+    script.write_text(script.read_text().replace('"summary\\n"', '"summary, revised\\n"'))
+    # Modified, tracked, unstaged: " M path" (the helper strips the leading space).
+    assert git(here, "status", "--porcelain") == "M runs/p1/code/profile.py"
+    assert transact(here, there, script) == 0
+    assert (here / "runs/p1/out/summary.md").read_text() == "summary, revised\n"
+
+
+def test_paths_with_spaces_and_non_ascii_characters_work(clones: tuple[Path, Path]) -> None:
+    here, there = clones
+    script = here / "runs" / "p1" / "code" / "profil \u00e9t\u00e9.py"
+    script.parent.mkdir(parents=True)
+    script.write_text(PROFILE.format(manifest="summary.md\n"))
+    assert transact(here, there, script) == 0
+    assert (here / "runs/p1/out/summary.md").exists()
+
+
+def test_a_stop_before_any_commit_says_nothing_was_committed(
+    clones: tuple[Path, Path], capfd: pytest.CaptureFixture[str]
+) -> None:
+    here, there = clones
+    (there / "notes.txt").write_text("left over\n")
+    assert transact(here, there, write_script(here)) == 1
+    assert "Nothing had been committed or pushed." in capfd.readouterr().err

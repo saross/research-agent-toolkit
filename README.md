@@ -137,8 +137,11 @@ configuration you pass to `/verification-agents:data-profile-iterate`. The repos
 already be cloned on that machine. The exchange makes two commits on your current branch and
 pushes them: the profile script, and the output files the script lists. A script in the plugin
 (`scripts/remote_run.py`) does it as one checked step. It refuses to start unless both clones
-are clean, on the same branch and commit, and level with the remote, so that nothing else can
-be committed or published along the way, and it never switches branch, resets, or force-pushes.
+are clean, on the same branch and commit, and level with the remote. Each push names one commit
+and one branch, after checking that the commit sits directly on the one before it and changes
+only the expected files, so other branches, tags, and anyone else's commits are not published
+by it. It stops if either clone changes underneath it, and it never switches branch, resets, or
+force-pushes.
 The verifier still runs on this machine, so the dataset must be readable here as well.
 
 ## Why verification first

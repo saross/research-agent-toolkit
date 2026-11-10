@@ -1751,6 +1751,7 @@ SUBTITLE_CASES = [
     ("A Study: of two parts", "Of Two Parts", "A Study: of two parts"),
     ("A Study \u2013 Of Two Parts", "of two parts", "A Study \u2013 Of Two Parts"),
     ("Same Words", "same words", "Same Words"),
+    ("X: Strasse", "Stra\u00dfe", "X: Strasse"),  # folding changes the length
     ("A Study:", "Part two", "A Study: Part two"),
     # Greek: "The city", "One".
     ("\u0397 \u03c0\u03cc\u03bb\u03b7", "\u039c\u03b9\u03b1",

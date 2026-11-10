@@ -478,7 +478,9 @@ expected:
    that it runs from the repository's root and uses paths relative to that root, because the
    other clone lives somewhere else. As its last act it must write `<output_dir>/outputs.manifest`:
    one line for each output file it wrote, as a path relative to `output_dir` (for example
-   `summary.md`, `tables/counts.csv`). Only files listed there come back.
+   `summary.md`, `tables/counts.csv`). Only files listed there come back. List every file the
+   script writes: one left unlisted stays behind in the other clone as an uncommitted change,
+   and the next run will refuse to start until it is removed.
 2. Run the exchange:
 
    ```bash
@@ -502,7 +504,9 @@ Rules for this mode:
 - If the script stops, report its message in full and stop too. Don't repair the repository
   yourself (no stash, reset, checkout, clean, or push), don't retry, and don't fall back to
   running locally: the caller chose the other machine for a reason, often that this one can't
-  hold the data. A stop after the script commit leaves that one commit pushed; say so.
+  hold the data. The script's message lists what had been committed and what had been pushed
+  by the time it stopped; pass that on exactly, since a commit can exist here without having
+  been pushed.
 - Pass `host`, `workdir`, and `venv_python` to the script exactly as given. Don't run any other
   command on the remote machine.
 - The dataset must already be readable on the remote machine, at a path inside the repository

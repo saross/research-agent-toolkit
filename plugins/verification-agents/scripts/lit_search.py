@@ -765,7 +765,10 @@ def _join_title_and_subtitle(title: str, subtitle: str) -> str:
     if folded_title == folded_subtitle:
         return title
     if folded_title.endswith(folded_subtitle):
-        before = title[: len(title) - len(subtitle)].rstrip()
+        # Look at the folded title, not the original: folding can change a
+        # string's length ("Stra\u00dfe" folds to "strasse"), so lengths taken
+        # from the originals would cut in the wrong place.
+        before = folded_title[: len(folded_title) - len(folded_subtitle)].rstrip()
         if before and before[-1] in ":-\u2013\u2014.?!":
             return title
     if title[-1] in "?!":
