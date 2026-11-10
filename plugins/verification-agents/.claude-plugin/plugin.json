@@ -11,7 +11,7 @@
     "library_check_command": {
       "type": "string",
       "title": "Library check command",
-      "description": "Optional. A command that reads DOIs on standard input, one per line, and prints the ones already in your reference library. The literature scout marks those [HAVE]. Leave empty to skip the check."
+      "description": "Optional. A command that reads DOIs on standard input, one per line, and prints the ones already in your reference library, exiting with an error if it can't check. The literature scout marks those [HAVE]. Leave empty to skip the check."
     },
     "library_import_command": {
       "type": "string",

@@ -13,30 +13,47 @@ unverified references into the user's library with nothing to mark them.
 This script makes the safe choice the easy one. It writes two files into the
 run folder:
 
-    verified-claims.jsonl    claims for papers whose every check passed
+    verified-claims.jsonl    claims for papers whose every claim passed
     unverified-claims.jsonl  claims for all other papers, each with a
-                             `verification` field listing what didn't pass
+                             `verification` field listing what was wrong
 
 An import script that reads only `verified-claims.jsonl` can't import an
 unverified reference by accident.
 
-A paper counts as verified only when the verifier's `corrections.jsonl` has
-at least one verdict for it and every verdict is `pass`. A paper with a
-`partial`, `fail`, or `unverifiable` verdict, or with no verdict at all, is
-unverified: absence of a check is not a pass. If `corrections.jsonl` is
-missing or empty, or has a line that can't be read, every paper is
-unverified: an unreadable verdict might have been a failure.
+The rule is one-sided: when in doubt, a paper is unverified. A paper is
+verified only when **every one of its claims** has at least one verdict in
+the verifier's `corrections.jsonl`, and every verdict on every claim is
+`pass`. Otherwise it is unverified, which covers:
 
-Papers are matched by the `doi` field, compared case-insensitively, falling
-back to the `claim_id` with its category suffix removed for records that
-have no `doi`.
+- a claim with a `partial`, `fail`, or `unverifiable` verdict;
+- a claim with no verdict at all (absence of a check is not a pass);
+- a verdict whose DOI disagrees with its claim's DOI;
+- a claim identifier that appears under two different papers.
+
+Some defects in `corrections.jsonl` can't be tied to one paper, and any of
+them might hide a failure. Each makes **every** paper unverified: a line
+that isn't a JSON object; a record without a `claim_id` or with a status
+other than the four the verifier uses; a verdict short of `pass` for a claim
+this run never made; and the `_legacy` placeholder.
+
+Verdicts are matched to claims by `claim_id`, which the verifier copies
+exactly. Claims are grouped into papers by their own `doi` field, compared
+without regard to letter case or a leading `https://doi.org/` or `doi:`. A
+claim with no `doi` is grouped by its `claim_id` without the category
+suffix. The DOI is never rebuilt from the `claim_id`, which loses
+information.
+
+The claims come from the highest-numbered `iter-N` folder. If that folder
+has no claims (an interrupted iteration, say), the script fails instead of
+falling back to an earlier iteration, whose table the run had already moved
+on from. On any failure it leaves neither output file behind.
 
 Uses the standard library only.
 
 Usage:
     python3 split_claims.py RUN_FOLDER
 
-Exit status: 0 on success; 2 when the run folder has no final claims.
+Exit status: 0 on success; 2 when the split could not be made.
 """
 
 from __future__ import annotations
@@ -47,120 +64,212 @@ import sys
 from pathlib import Path
 
 CATEGORY_SUFFIX = re.compile(r"-(authors|year|title|citation_count|doi_resolves)$")
+ITERATION_NAME = re.compile(r"iter-([0-9]+)", re.ASCII)
+STATUSES = ("pass", "partial", "fail", "unverifiable")
+DOI_PREFIXES = (
+    "https://doi.org/",
+    "http://doi.org/",
+    "https://dx.doi.org/",
+    "http://dx.doi.org/",
+    "doi:",
+)
+VERIFIED_NAME = "verified-claims.jsonl"
+UNVERIFIED_NAME = "unverified-claims.jsonl"
 
 
-def load_jsonl(path: Path) -> list[dict]:
+class SplitError(Exception):
+    """The run folder can't be split; the message says why."""
+
+
+def canonical_doi(value: object) -> str:
     """
-    Read a JSON Lines file, skipping blank and unparseable lines.
+    Reduce a DOI to a form that can be compared.
 
     Args:
-        path: The file to read. A missing file gives an empty list.
+        value: A record's `doi` field, of any type.
 
     Returns:
-        The records that parsed as JSON objects, in file order.
+        The DOI in lower case, without surrounding space or a leading web
+        address or `doi:`. Empty for a missing or non-text value.
+    """
+    if not isinstance(value, str):
+        return ""
+    text = value.strip().lower()
+    for prefix in DOI_PREFIXES:
+        if text.startswith(prefix):
+            return text[len(prefix):].strip()
+    return text
+
+
+def read_jsonl(path: Path) -> tuple[list[dict], int]:
+    """
+    Read a JSON Lines file.
+
+    Args:
+        path: The file to read. A missing file gives no records.
+
+    Returns:
+        The lines that are JSON objects, in order, and the number of
+        non-blank lines that are not.
     """
     if not path.is_file():
-        return []
-    records = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
+        return [], 0
+    records: list[dict] = []
+    unreadable = 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
             continue
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
+            unreadable += 1
             continue
         if isinstance(record, dict):
             records.append(record)
-    return records
+        else:
+            unreadable += 1
+    return records, unreadable
 
 
-def unreadable_lines(path: Path) -> int:
+def final_iteration(run_folder: Path) -> Path:
     """
-    Count the non-blank lines of a JSON Lines file that are not JSON objects.
-
-    Args:
-        path: The file to check. A missing file counts as zero.
-
-    Returns:
-        The number of lines that `load_jsonl` would skip.
-    """
-    if not path.is_file():
-        return 0
-    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    return len(lines) - len(load_jsonl(path))
-
-
-def paper_key(record: dict) -> str:
-    """
-    Return the key that groups a claim or a verdict with its paper.
-
-    Args:
-        record: One claim or correction record.
-
-    Returns:
-        The lower-cased DOI when the record has one; otherwise the
-        `claim_id` without its category suffix. Empty when it has neither.
-    """
-    doi = str(record.get("doi") or "").strip().lower()
-    if doi:
-        return doi
-    return CATEGORY_SUFFIX.sub("", str(record.get("claim_id") or "").strip().lower())
-
-
-def final_iteration(run_folder: Path) -> Path | None:
-    """
-    Return the highest-numbered `iter-N` folder that has a non-empty `claims.jsonl`.
+    Return the highest-numbered `iter-N` folder.
 
     Args:
         run_folder: The lit-scout-iterate run folder.
 
     Returns:
-        The folder, or None when no iteration has claims.
+        The folder for the last iteration the run started.
+
+    Raises:
+        SplitError: If there is no `iter-N` folder, or the last one has no
+            claims. An earlier iteration is never used in its place.
     """
     numbered = []
     for path in run_folder.glob("iter-*"):
-        suffix = path.name.removeprefix("iter-")
-        if path.is_dir() and suffix.isdigit():
-            numbered.append((int(suffix), path))
-    for _, path in sorted(numbered, reverse=True):
-        claims = path / "claims.jsonl"
-        if claims.is_file() and claims.stat().st_size > 0:
-            return path
-    return None
+        match = ITERATION_NAME.fullmatch(path.name)
+        if match and path.is_dir():
+            numbered.append((int(match.group(1)), path))
+    if not numbered:
+        raise SplitError(f"no iter-N folder under {run_folder}")
+    final = max(numbered)[1]
+    claims = final / "claims.jsonl"
+    if not claims.is_file() or claims.stat().st_size == 0:
+        raise SplitError(
+            f"{final.name} is the last iteration and has no claims.jsonl; "
+            "not falling back to an earlier iteration"
+        )
+    return final
 
 
-def split(claims: list[dict], corrections: list[dict]) -> tuple[list[dict], list[dict]]:
+def paper_of(claim: dict) -> str:
+    """
+    Return the key of the paper a claim belongs to.
+
+    Args:
+        claim: One claim record.
+
+    Returns:
+        "doi:" and the canonical DOI when the claim has one; otherwise "id:"
+        and the `claim_id` without its category suffix.
+    """
+    doi = canonical_doi(claim.get("doi"))
+    if doi:
+        return f"doi:{doi}"
+    return "id:" + CATEGORY_SUFFIX.sub("", str(claim.get("claim_id") or "").strip())
+
+
+def split(
+    claims: list[dict], corrections: list[dict], unreadable: int = 0
+) -> tuple[list[dict], list[dict]]:
     """
     Divide claims into those for verified papers and those for the rest.
 
     Args:
         claims: The final iteration's claim records.
         corrections: The final iteration's verdict records.
+        unreadable: How many lines of the corrections file were not JSON
+            objects.
 
     Returns:
         Two lists, verified then unverified, each in the claims' order. Each
-        unverified claim gains a `verification` field: the paper's verdicts
-        that were not `pass`, as "category: status", or "not checked" when
-        the verifier gave no verdict for the paper.
+        unverified claim gains a `verification` field: the reasons its paper
+        is unverified, such as "title: fail" or "year: no verdict".
     """
-    verdicts: dict[str, list[tuple[str, str]]] = {}
+    # Problems that can't be tied to one paper make every paper unverified.
+    everywhere: list[str] = []
+    if unreadable:
+        everywhere.append(f"{unreadable} unreadable line(s) in corrections.jsonl")
+
+    # Each claim identifier, the paper it belongs to, and its category.
+    papers_of_id: dict[str, set[str]] = {}
+    reasons: dict[str, list[str]] = {}  # paper -> why it is unverified
+    for claim in claims:
+        paper = paper_of(claim)
+        reasons.setdefault(paper, [])
+        claim_id = claim.get("claim_id")
+        if not isinstance(claim_id, str) or not claim_id.strip():
+            reasons[paper].append("a claim has no claim_id")
+            continue
+        papers_of_id.setdefault(claim_id, set()).add(paper)
+    for claim_id, papers in papers_of_id.items():
+        if len(papers) > 1:
+            for paper in papers:
+                reasons[paper].append(f"claim_id {claim_id} appears under more than one paper")
+
+    # Every verdict, attached to its claim by claim_id.
+    statuses_of_id: dict[str, list[str]] = {}
     for record in corrections:
-        key = paper_key(record)
-        if key:
-            status = str(record.get("status") or "").strip().lower()
-            verdicts.setdefault(key, []).append((str(record.get("category") or "?"), status))
+        claim_id = record.get("claim_id")
+        status = record.get("status")
+        status = status.strip().lower() if isinstance(status, str) else ""
+        if not isinstance(claim_id, str) or not claim_id.strip():
+            everywhere.append("a verdict has no claim_id")
+            continue
+        if claim_id == "_legacy":
+            everywhere.append("the verifier reported that the proposer emitted no claims")
+            continue
+        if status not in STATUSES:
+            everywhere.append(f"verdict for {claim_id} has an unknown status")
+            continue
+        if claim_id not in papers_of_id:
+            # A pass for a claim nobody made changes nothing. Anything else
+            # is a failure that can't be attributed, so it counts everywhere.
+            if status != "pass":
+                everywhere.append(f"verdict '{status}' for unknown claim {claim_id}")
+            continue
+        statuses_of_id.setdefault(claim_id, []).append(status)
+        doi = canonical_doi(record.get("doi"))
+        if doi:
+            for paper in papers_of_id[claim_id]:
+                if paper.startswith("doi:") and paper != f"doi:{doi}":
+                    reasons[paper].append(f"verdict for {claim_id} names another DOI")
+                    if f"doi:{doi}" in reasons:
+                        reasons[f"doi:{doi}"].append(
+                            f"verdict for {claim_id} names this DOI but belongs to another paper"
+                        )
+
+    # Every claim needs a verdict, and every verdict must be a pass.
+    for claim in claims:
+        claim_id = claim.get("claim_id")
+        if not isinstance(claim_id, str) or not claim_id.strip():
+            continue
+        label = str(claim.get("category") or claim_id)
+        found = statuses_of_id.get(claim_id, [])
+        if not found:
+            reasons[paper_of(claim)].append(f"{label}: no verdict")
+        for status in found:
+            if status != "pass":
+                reasons[paper_of(claim)].append(f"{label}: {status}")
 
     verified: list[dict] = []
     unverified: list[dict] = []
     for claim in claims:
-        found = verdicts.get(paper_key(claim), [])
-        problems = [f"{category}: {status or 'no status'}"
-                    for category, status in found if status != "pass"]
-        if found and not problems:
-            verified.append(claim)
+        why = list(dict.fromkeys(reasons[paper_of(claim)] + everywhere))
+        if why:
+            unverified.append({**claim, "verification": why})
         else:
-            unverified.append({**claim, "verification": problems or ["not checked"]})
+            verified.append(claim)
     return verified, unverified
 
 
@@ -176,28 +285,27 @@ def main(argv: list[str]) -> int:
         print("usage: split_claims.py RUN_FOLDER", file=sys.stderr)
         return 2
     run_folder = Path(argv[1])
-    final = final_iteration(run_folder)
-    if final is None:
-        print(f"split_claims: no iter-N/claims.jsonl under {run_folder}", file=sys.stderr)
+    # Remove earlier output first, so that a failure can't leave a stale
+    # list behind for an import command to read.
+    for name in (VERIFIED_NAME, UNVERIFIED_NAME):
+        (run_folder / name).unlink(missing_ok=True)
+    try:
+        final = final_iteration(run_folder)
+        claims, bad_claims = read_jsonl(final / "claims.jsonl")
+        if bad_claims:
+            raise SplitError(f"{bad_claims} unreadable line(s) in {final.name}/claims.jsonl")
+        if not claims:
+            raise SplitError(f"{final.name}/claims.jsonl holds no claims")
+        corrections, unreadable = read_jsonl(final / "corrections.jsonl")
+    except (SplitError, OSError) as error:
+        print(f"split_claims: {error}", file=sys.stderr)
         return 2
-    claims = load_jsonl(final / "claims.jsonl")
-    corrections = load_jsonl(final / "corrections.jsonl")
-    unreadable = unreadable_lines(final / "corrections.jsonl")
-    if unreadable:
-        # A verdict that can't be read might have been a failure, so no
-        # paper can be called verified on the strength of the rest.
-        print(
-            f"split_claims: {unreadable} unreadable line(s) in corrections.jsonl; "
-            "treating every paper as unverified",
-            file=sys.stderr,
-        )
-        corrections = []
-    verified, unverified = split(claims, corrections)
-    write_jsonl(run_folder / "verified-claims.jsonl", verified)
-    write_jsonl(run_folder / "unverified-claims.jsonl", unverified)
+    verified, unverified = split(claims, corrections, unreadable)
+    write_jsonl(run_folder / VERIFIED_NAME, verified)
+    write_jsonl(run_folder / UNVERIFIED_NAME, unverified)
     print(
-        f"{final.name}: {len({paper_key(c) for c in verified})} verified papers, "
-        f"{len({paper_key(c) for c in unverified})} unverified"
+        f"{final.name}: {len({paper_of(c) for c in verified})} papers verified, "
+        f"{len({paper_of(c) for c in unverified})} unverified"
     )
     return 0
 

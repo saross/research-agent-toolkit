@@ -63,8 +63,8 @@ the run's results into two files in the run folder:
 
 | File | Holds |
 | --- | --- |
-| `verified-claims.jsonl` | The claims (authors, year, title, citation count, DOI) for papers whose every check passed. One record per claim, each with the full `doi` |
-| `unverified-claims.jsonl` | The same for every other paper: a check failed, was only a partial match, couldn't be completed, or wasn't made. Each record has a `verification` field saying which |
+| `verified-claims.jsonl` | The claims (authors, year, title, citation count, DOI) for papers whose every claim passed. One record per claim, each with the full `doi` |
+| `unverified-claims.jsonl` | The same for every other paper: a claim failed, was only a partial match, couldn't be checked, or has no verdict. Each record has a `verification` field saying which |
 
 A run can end with unverified papers still in its table, for example when a registry was
 throttled. An import command that reads only `verified-claims.jsonl` can't put one of those into
@@ -73,15 +73,27 @@ your library by accident. Import the unverified ones only if your command marks 
 
 The run folder also holds `query.txt` (your query) and one `iter-N` folder per iteration; the
 highest-numbered holds the final `claims.jsonl`, `corrections.jsonl` (the verifier's verdict on
-each claim), and `report.md` (the verified report). Both commands should exit with an error
-status when they fail; the scout then reports the failure, and never marks a row `[HAVE]` on a
-failed check.
+each claim), and `report.md` (the verified report).
+
+**Failing clearly.** Both commands must exit with an error status when they couldn't do their
+job, and a check command must print a DOI only when it found exactly that DOI. A check that
+exits cleanly with no output means "nothing held", so a check that can't read your library and
+still exits cleanly hides every duplicate. On an error the scout reports the library as not
+checked and never marks a row `[HAVE]`. An import command can also finish with some items not
+imported; it should say which in its summary, which the report keeps in full. The plugin never
+runs an import a second time, since that could create duplicates: if one fails part-way, you
+decide what to do.
+
+**What a value may be.** A value is a script or program with any fixed arguments, written as
+you would type it in a shell; the plugin adds the run folder, or the DOIs on standard input.
+Quote a path that contains spaces. Put pipelines and anything more involved inside a script of
+your own, and give its path.
 
 Set the options when you install, or later:
 
 ```bash
 claude plugin install verification-agents@research-agent-toolkit \
-  --config library_check_command="$HOME/bin/have-doi.sh"
+  --config library_check_command="python3 $HOME/bin/zotero-library-check.py"
 claude plugin configure verification-agents@research-agent-toolkit
 ```
 
@@ -89,21 +101,20 @@ Inside Claude Code, `/plugin configure verification-agents` opens the same optio
 paths, and keep API keys out of the option values: they are stored in your `settings.json` and
 shown to the model. A script that needs a key should read it from its own environment or file.
 
-A minimal check command, for a library exported to one BibTeX file:
-
-```bash
-#!/usr/bin/env bash
-# have-doi.sh: print each DOI from standard input that appears in the export.
-# It matches substrings, so a DOI that is a prefix of another also matches.
-while IFS= read -r doi; do
-  [ -n "$doi" ] && grep -qiF -- "$doi" "$HOME/references.bib" && printf '%s\n' "$doi"
-done
-exit 0
-```
+**An example for Zotero.**
+[`plugins/verification-agents/examples/zotero-library-check.py`](plugins/verification-agents/examples/zotero-library-check.py)
+is a working check command for a Zotero library on the same computer. It reads the DOI field of
+every item in your local Zotero database, in all your libraries, without writing to it, and
+needs only Python. Copy it somewhere of your own, read it, and set `library_check_command` to
+`python3` followed by its full path. There is no example import command: importing writes to
+your library, and how you want new items filed, tagged, and de-duplicated is yours to decide.
+The Zotero web API and the `pyzotero` library are the usual route.
 
 The values are commands that the agent runs in your shell, so set them only to scripts you
-trust. An unset option needs Claude Code to leave its placeholder in the text or to fill it with
-nothing, which is how version 2.1.322 behaves; the agents treat either as "not set".
+trust; this is not a sandbox. What your scripts print goes into the agent's context and the
+report as text, and the agents are told to treat it as data, not instructions. An unset option
+needs Claude Code to leave its placeholder in the text or to fill it with nothing, which is how
+version 2.1.322 behaves; the agents treat either as "not set".
 
 ## Why verification first
 
