@@ -496,3 +496,8 @@ class TestFreshContextPrompts:
         assert "undefined label IS a defect" in consistency("adversarial")
         assert "EXPECTED while drafting" in consistency("critical-friend")
 
+    def test_the_meta_reviewer_reads_only_the_files_named(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(stance="adversarial"))
+        meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
+        assert "Read ONLY\nthe target file(s) and the files named below" in meta
+

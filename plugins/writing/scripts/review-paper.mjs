@@ -775,7 +775,8 @@ Return a LENS_VERDICT (lens = "unanimous-check").`,
 of fresh-context sceptic lenses has reviewed ${TARGETS.length} section(s) of a manuscript
 (repo: ${REPO}; targets: ${TARGETS.join(', ')}). Your job is to review the REVIEWS —
 adversarially — before the report reaches the author. You may read the target file(s) to
-check a finding, but your subject is the panel's findings, not the manuscript.
+check a finding, but your subject is the panel's findings, not the manuscript. Read ONLY
+the target file(s) and the files named below; nothing else in the repository.
 
 ${STANDING_INSTRUCTIONS_CAUTION}
 ${metaContext()}
