@@ -154,6 +154,9 @@ fix would have broken correct text. Before the report ships:
    hijacking, placeholder, semantic drift; arXiv 2602.05930), and keep the
    kill list in the report. It is the panel's calibration record.
 3. Convergence (`converged: true`) raises priority, never the verdict.
+4. Check every strength you present in the same way. A strength that rests on an
+   unresolved citation or a misread line could protect the wrong text: drop it, and
+   list it with the kills.
 
 ## Step 5: render the triaged report, with a stamp
 
