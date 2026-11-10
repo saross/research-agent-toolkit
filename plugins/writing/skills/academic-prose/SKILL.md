@@ -26,7 +26,7 @@ the register kept outside the skill.
 In what follows, **the author** is the person whose prose this is:
 the user, or the user and their co-authors.
 
-## Gate: load the register (once per session, before the first prose edit)
+## Gate: load the register (before prose work; re-open, don't recall)
 
 Read these in full, in this order.
 
@@ -56,15 +56,19 @@ load with it (the bundled register names one, its anti-tic rules).
 
 **3. The project's register notes.** These override the base register
 wherever the two conflict. Read every file the project's `CLAUDE.md`
-names as a register or style note, and every match of:
+names as a register or style note, and every Markdown file this finds,
+run from the project's root, skipping any that is plainly not about
+prose (a coding style guide, say):
 
 ```bash
-ls .notes/ docs/ 2>/dev/null | grep -Ei 'register|prose|style|voice|writing'
+ls .notes/*.md docs/*.md 2>/dev/null | grep -Ei 'register|prose|style|voice|writing'
 ```
 
 A summary in `CLAUDE.md`, or a memory of the rules, is a pointer, not
 the rule. Re-open the files. This gate fires for every kind of prose
-work, including a two-sentence tweak deep in a long session.
+work, including a two-sentence tweak deep in a long session. Where the
+register and this skill differ on style (a word, a mark, a flourish),
+the register wins: it is the author's.
 
 | Rationalisation | Reality |
 | --- | --- |
@@ -81,7 +85,7 @@ yet, propose writing one at the end of the session.
 The deliverable is a **concept skeleton at target density**, not
 polished voice. The author is always the prose editor; the draft's
 job is to make their edit fast. Imitating their voice optimises the
-wrong objective (the 4–12% survival rate above).
+wrong objective.
 
 Each load-bearing point needs all three legs: **mechanism, one
 concrete instance, and its honest boundary**. Section types take
@@ -134,7 +138,9 @@ promoting it.
 
 ## Countable exit checks (run before declaring prose done)
 
-Run on the changed prose, with `FILE` set to its path:
+Run on the changed prose: copy the new or revised passage into a file of
+this session's own, outside the project, and set `FILE` to its path (the
+em-dash count also catches Markdown rules and LaTeX dashes; read each hit):
 
 ```bash
 # Em-dashes (LaTeX and Unicode), semicolons, colons
@@ -143,7 +149,7 @@ grep -o ';' FILE | wc -l
 grep -o ':' FILE | wc -l
 # Booster deny-list
 grep -n -iE '\b(clearly|obviously|certainly|definitely|undoubtedly)\b' FILE
-# Whilst, "the authors", "it is important to note"
+# "The authors", "it is important to note", and "whilst" (a register may allow it)
 grep -n -iE '\bwhilst\b|the authors\b|important to note' FILE
 # Three consecutive short sentences (crude): eyeball any cluster
 grep -nE '(\b\w+\b[[:space:]]+){0,4}\w+[.!?][[:space:]]+(\b\w+\b[[:space:]]+){0,4}\w+[.!?][[:space:]]+(\b\w+\b[[:space:]]+){0,4}\w+[.!?]' FILE
@@ -151,21 +157,18 @@ wc -w FILE
 ```
 
 Turn the counts into rates per 1,000 words and report them against the
-register's gate table. A deviation is a flag for judgement, not an
+register's gate table; if the register sets no target for a count,
+report the raw rate. A deviation is a flag for judgement, not an
 automatic fail, but an unreported count is a skipped check.
 
 ## Red flags: stop if you catch yourself thinking
 
-- "I'll add the example or gloss later." Later never comes. Now.
-- "The number is roughly right." Anchor it or mark it `[unverified]`.
 - "This sentence sounds like the author." Wrong objective. Is it
   plain, anchored, and skeleton-complete?
 - "The section flows nicely." Flow is the author's job. Density is
   yours.
 - "It's reviewer-facing, so pre-empt the objection." Defensive hedging
   is scar tissue. State the design, and put limits in the limitations.
-- "I'll skip the gate; the register hasn't changed." The gate has no
-  size threshold.
 
 ## Before declaring the prose done
 
@@ -175,4 +178,5 @@ automatic fail, but an unreported count is a skipped check.
 - [ ] Section anchor density checked against the register's targets
 - [ ] All specifics anchored or explicitly `[unverified]`
 - [ ] Countable exit checks run and counts reported
-- [ ] Changed facts, names, and thresholds propagated across the project
+- [ ] Other places in the project that need the same change (a fact, a name, a
+      threshold) listed for the author

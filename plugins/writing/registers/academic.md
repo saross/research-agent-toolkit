@@ -138,9 +138,9 @@ unanchored specifics smoothly. Draft against these drifts.
 
 ## Quantitative gate
 
-Run on request. A deviation is a flag for judgement, not a verdict. The
-targets are the source corpus's measurements; replace them with your
-own.
+The academic-prose skill runs these counts before handing prose over. A
+deviation is a flag for judgement, not a verdict. The targets are the
+source corpus's measurements; replace them with your own.
 
 | Metric | Target | Tolerance |
 | --- | ---: | ---: |
