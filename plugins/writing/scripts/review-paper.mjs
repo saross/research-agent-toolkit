@@ -42,6 +42,10 @@
  *   REQUIRED
  *     targets        [string]  absolute paths of the section .tex files
  *     repo           string    absolute paper-repo root (agents' working dir)
+ *   ALONE
+ *     prepareOnly    true      return {prepared: true} at once, before any agent:
+ *                              the skill's way to have the tool save an inline
+ *                              copy, which it checks before the real run
  *   OPTIONAL
  *     stance         'critical-friend' (default) | 'adversarial'
  *     scope          'section' | 'paper' (default: 'section' iff 1 target)
@@ -65,6 +69,10 @@
  *     voice          boolean   enable the off-by-default voice lens
  *     voiceReference string    register/corpus note path (required if voice)
  *     prepassFindings [ {check, severity, detail, evidence, target} ]
+ *
+ * Returns, among other fields: gateValid (every required stage ran), coverage
+ * (per stage), verdict and cleared (null unless gateValid), and provisional
+ * (the severity-only verdict and clearance, whatever the coverage).
  */
 
 export const meta = {
@@ -88,6 +96,14 @@ if (typeof A === 'string') {
 }
 if (!A || typeof A !== 'object' || Array.isArray(A)) {
   throw new Error('review-paper: args must be an object — see the script header.')
+}
+// Prepare-only call (review finding R27). When the Workflow tool can't load
+// this file by path, the skill passes the script inline once with
+// {prepareOnly: true}: the tool saves the script and names the saved file,
+// the skill compares that file with the bundled script, and only then runs the
+// saved file by path. This return comes before any agent can start.
+if (A.prepareOnly === true) {
+  return { prepared: true }
 }
 const TARGETS = A.targets
 if (!Array.isArray(TARGETS) || !TARGETS.length) {
@@ -132,6 +148,21 @@ function rulingsFor(target) {
   if (!A.settledRulings) return null
   if (typeof A.settledRulings === 'string') return A.settledRulings
   return A.settledRulings[target] || A.settledRulings[relPath(target)] || null
+}
+
+// The settled rulings for a set of targets: one register per target, labelled
+// by its path when there are several. A whole-paper stage used to look up the
+// joined list of targets as one key, found nothing, and so could re-open a
+// settled issue (review finding R29).
+function rulingsBlock(targets) {
+  if (!A.settledRulings) return null
+  if (typeof A.settledRulings === 'string') return A.settledRulings
+  const parts = []
+  for (const t of targets) {
+    const r = rulingsFor(t)
+    if (r) parts.push(targets.length === 1 ? r : `--- ${relPath(t)} ---\n${r}`)
+  }
+  return parts.length ? parts.join('\n\n') : null
 }
 
 // --- Schemas ----------------------------------------------------------------
@@ -262,10 +293,13 @@ grep hit, citekey, or verbatim quote) — no anchor, no finding.`
 }
 
 // --- Shared prompt scaffolding ----------------------------------------------
-function commonBrief(target) {
-  const rulings = rulingsFor(target)
+function commonBrief(targetOrTargets) {
+  const targets = Array.isArray(targetOrTargets) ? targetOrTargets : [targetOrTargets]
+  const rulings = rulingsBlock(targets)
   const context = []
-  context.push(`TARGET (read it in full, first): ${target}`)
+  context.push(targets.length === 1
+    ? `TARGET (read it in full, first): ${targets[0]}`
+    : `TARGETS (read each in full, in this order):\n  ${targets.join('\n  ')}`)
   context.push(`Working directory / repo root: ${REPO}`)
   if (A.paperBrief) context.push(`PAPER BRIEF (static context):\n${A.paperBrief}`)
   if (Array.isArray(A.readOnlyContext) && A.readOnlyContext.length) {
@@ -468,6 +502,18 @@ if (failedLenses > 0) {
       '(skipped/errored) — coverage is PARTIAL; any verdict below is not a valid gate.')
 }
 
+// An auxiliary stage (synthesis, unanimous check, meta-review) that throws is
+// treated as failed, like one that returns null, so the panel's results and
+// the coverage record survive (review finding R30).
+async function auxiliary(prompt, opts) {
+  try {
+    return await agent(prompt, opts)
+  } catch (e) {
+    log(`WARNING: ${opts.label} agent failed: ${e && e.message ? e.message : e}`)
+    return null
+  }
+}
+
 // --- Phase 2: cross-section synthesis (paper scope only; barrier is correct:
 // it needs every section + every panel verdict together) ---------------------
 let crossSection = null
@@ -475,9 +521,9 @@ if (SCOPE === 'paper') {
   const findingsDigest = panelResults.flatMap((p) =>
     p.verdicts.flatMap((v) => (v.findings || []).map((f) =>
       `- [${v.lens} @ ${shortName(p.target)}] ${f.severity}: ${f.detail}`))).join('\n')
-  const csResult = await agent(`${stancePreamble(STANCE)}
+  const csResult = await auxiliary(`${stancePreamble(STANCE)}
 
-${commonBrief(TARGETS.join('\n  '))}
+${commonBrief(TARGETS)}
 
 LENS: CROSS-SECTION SYNTHESIS (whole paper). Read EVERY target file listed above, in
 order, then assess the COMPOSED paper:
@@ -543,26 +589,46 @@ function collectFindings() {
 }
 
 // Convergence upgrades PRIORITY, not verdict: findings from >= 2 distinct
-// lenses sharing an anchor token (a :line number or a citekey-shaped token)
+// lenses sharing an anchor token (a file and line, or a citekey-shaped token)
 // are independent confirmations of the same issue.
-// A line anchor: an optional file name, a colon, a line number, and an
-// optional range ("methods.tex:12", ":12", "refs.bib:7", "methods.tex:10-12").
-// Each line is attributed to the file the anchor names, so a .bib or .blg line
-// never counts as a line of the target (found in a real run, where 39 of 41
-// findings were marked converged); a bare ":N" belongs to the finding's own
-// target. A short range (up to MAX_ANCHOR_RANGE lines) counts every line in
-// it; a wider one counts only its first line, since a range spanning most of a
-// section shows no agreement about where a problem is.
+// A line anchor: an optional file path, a colon, a line number, and an
+// optional range ("sections/methods.tex:12", "methods.tex:12", ":12",
+// "methods.tex:10-12"). Each line is attributed to the file the anchor names,
+// by its repository-relative path: a .bib or .blg line never counts as a line
+// of the target (found in a real run, where 39 of 41 findings were marked
+// converged), and sections/methods.tex and appendix/methods.tex stay apart
+// (review finding R28). A file name without a folder is resolved to the
+// finding's own target when the names match, else to the one known file of
+// that name; if none or several match, the anchor gives no token. A bare ":N"
+// belongs to the finding's own target. A short range (up to MAX_ANCHOR_RANGE
+// lines) counts every line in it; a wider one counts only its first line,
+// since a range spanning most of a section shows no agreement about where a
+// problem is.
 const LINE_ANCHOR = /(?:([\w./-]+\.[A-Za-z][A-Za-z0-9]{0,4}))?:(\d{1,5})(?:\s*[-–]\s*(\d{1,5}))?\b/g
 const MAX_ANCHOR_RANGE = 5
 const baseName = (p) => String(p).split('/').pop()
+const KNOWN_FILES = [...new Set([
+  ...TARGETS.map(relPath),
+  ...(Array.isArray(A.bibPaths) ? A.bibPaths.map(relPath) : []),
+  ...(Array.isArray(A.readOnlyContext) ? A.readOnlyContext.map(relPath) : []),
+])]
+
+function anchorFile(written, ownTarget) {
+  const own = typeof ownTarget === 'string' && !ownTarget.startsWith('(') ? ownTarget : null
+  if (!written) return own
+  const rel = relPath(written).replace(/^\.\//, '')
+  if (rel.includes('/')) return rel
+  if (own && baseName(own) === rel) return own
+  const matches = KNOWN_FILES.filter((k) => baseName(k) === rel)
+  return matches.length === 1 ? matches[0] : null
+}
 
 function anchorTokens(f) {
   const s = `${f.evidence || ''} ${f.targetClaim || ''}`
   const tokens = new Set()
-  const own = baseName(f.target)
   for (const m of s.matchAll(LINE_ANCHOR)) {
-    const file = m[1] ? baseName(m[1]) : own
+    const file = anchorFile(m[1], f.target)
+    if (!file) continue
     const start = Number(m[2])
     const last = m[3] ? Number(m[3]) : start
     const end = last >= start && last - start < MAX_ANCHOR_RANGE ? last : start
@@ -618,11 +684,23 @@ function metaContext() {
   if (Array.isArray(A.readOnlyContext) && A.readOnlyContext.length) {
     parts.push(`Other read-only context the lenses could consult: ${A.readOnlyContext.join(', ')}`)
   }
+  const rulings = rulingsBlock(TARGETS)
+  if (rulings) {
+    parts.push(`SETTLED RULINGS REGISTER (author-settled; the lenses were told to report only
+drift from these). A finding that re-opens one of these rulings, rather than reporting drift
+from it, is not sound as a finding: say so in its note and list it in
+verifyBeforePresenting:\n${rulings}`)
+  }
+  if (A.constraints) {
+    parts.push(`HARD CONSTRAINTS the author declared (the constraints lens checked them):\n${A.constraints}`)
+  }
+  if (VOICE) parts.push(`Voice reference the voice lens used (you may read it): ${A.voiceReference}`)
   return parts.length ? '\n' + parts.join('\n\n') + '\n' : ''
 }
 
 // --- Phase 3 (adversarial only): unanimous-check + meta-reviewer ------------
 let unanimousCheck = null
+let unanimousTriggered = false
 let metaReview = null
 if (STANCE === 'adversarial') {
   // [UNANIMOUS-CHECK]: a clean bill from every sceptic is itself suspicious.
@@ -635,9 +713,10 @@ if (STANCE === 'adversarial') {
   const llmCounts = tally(all.filter((f) => f.lens !== 'mechanical-prepass'))
   if (llmCounts.blockers === 0 && llmCounts.majors === 0 && failedLenses === 0) {
     log('[UNANIMOUS-CHECK] LLM panel returned no blockers/majors — dispatching devil\'s advocate.')
-    unanimousCheck = await agent(`${stancePreamble('adversarial')}
+    unanimousTriggered = true
+    unanimousCheck = await auxiliary(`${stancePreamble('adversarial')}
 
-${commonBrief(TARGETS.length === 1 ? TARGETS[0] : TARGETS.join('\n  '))}
+${commonBrief(TARGETS)}
 
 [UNANIMOUS-CHECK] A full sceptic panel just returned NO blocker or major findings on this
 target. Unanimity among reviewers is itself a signal worth stress-testing. Your single
@@ -681,7 +760,7 @@ Return a LENS_VERDICT (lens = "unanimous-check").`,
     `[${f.ref}] (${f.lens} @ ${shortName(f.target)}) ${f.severity}` +
     `${f.converged ? ' CONVERGED' : ''}: ${f.detail}\n    evidence: ${f.evidence}` +
     `${f.targetClaim ? `\n    target claim: ${f.targetClaim}` : ''}`).join('\n')
-  metaReview = await agent(`You are the META-REVIEWER (editor persona) in an adversarial review pipeline. A panel
+  metaReview = await auxiliary(`You are the META-REVIEWER (editor persona) in an adversarial review pipeline. A panel
 of fresh-context sceptic lenses has reviewed ${TARGETS.length} section(s) of a manuscript
 (repo: ${REPO}; targets: ${TARGETS.join(', ')}). Your job is to review the REVIEWS —
 adversarially — before the report reaches the author. You may read the target file(s) to
@@ -732,13 +811,30 @@ Return a META_REVIEW.`,
 const counts = tally(all)
 // Adversarial maps to the reproducibility-framework ladder; critical-friend
 // keeps the prototype's cleared boolean (it is not a gate).
-const verdict = STANCE === 'adversarial'
+const provisionalVerdict = STANCE === 'adversarial'
   ? (counts.blockers > 0 ? 'CHALLENGED' : counts.majors > 0 ? 'QUALIFIED' : 'CONFIRMED')
   : null
-const cleared = counts.blockers === 0 && counts.majors === 0
+const provisionalCleared = counts.blockers === 0 && counts.majors === 0
+
+// Every stage the run required, and whether it ran. A verdict or a clearance
+// is given only when all of them did; otherwise both are null and the
+// severity-only result is kept under "provisional" (review finding R30: an
+// incomplete review used to return CONFIRMED and cleared: true).
+const coverage = {
+  panel: { expected: EXPECTED_PANEL_AGENTS, succeeded: PANEL_SUCCESSES },
+  crossSection: SCOPE === 'paper' ? (crossSection ? 'ran' : 'failed') : 'not-required',
+  unanimousCheck: unanimousTriggered ? (unanimousCheck ? 'ran' : 'failed') : 'not-triggered',
+  metaReview: STANCE === 'adversarial' ? (metaReview ? 'ran' : 'failed') : 'not-required',
+}
+const gateValid = PANEL_SUCCESSES === EXPECTED_PANEL_AGENTS &&
+  ![coverage.crossSection, coverage.unanimousCheck, coverage.metaReview].includes('failed')
+const verdict = gateValid ? provisionalVerdict : null
+const cleared = gateValid ? provisionalCleared : null
 
 log(`review-paper done: ${counts.blockers} blocker / ${counts.majors} major / ` +
-    `${counts.minors} minor${verdict ? ` -> ${verdict}` : ''} (model ${MODEL}).`)
+    `${counts.minors} minor${provisionalVerdict ? ` -> ${provisionalVerdict}` : ''}` +
+    `${gateValid ? '' : ' (PROVISIONAL: a required stage did not run, so no gate verdict)'}` +
+    ` (model ${MODEL}).`)
 
 return {
   stance: STANCE,
@@ -746,8 +842,11 @@ return {
   model: MODEL,                       // echo for the artefact stamp
   ...(RUN_DATE ? { run_date: RUN_DATE } : {}),
   targets: TARGETS,
-  verdict,                            // adversarial ladder; null for critical-friend
-  cleared,                            // no blockers and no majors
+  gateValid,                          // every required stage ran
+  verdict,                            // adversarial ladder; null for critical-friend or !gateValid
+  cleared,                            // no blockers and no majors; null if !gateValid
+  provisional: { verdict: provisionalVerdict, cleared: provisionalCleared },
+  coverage,
   counts,
   partialCoverage: failedLenses > 0 ? failedLenses : 0,
   findings: all,                      // every finding, ref'd, with lens/target/converged

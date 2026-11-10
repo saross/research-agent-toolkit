@@ -114,25 +114,35 @@ the workflow sandbox has no clock), plus `prepassFindings` and
 `settledRulings` from Step 1.
 
 The Workflow tool loads a script by path only from the working
-directory or a directory added to the session, and this plugin's folder
-is usually neither. So:
+directory, a directory added to the session, or a file the tool itself
+saved; this plugin's folder is usually none of these. So:
 
 1. **Try the path first.** Call the Workflow tool with `scriptPath` set
    to `${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs` and the
    arguments. This works when the user has added the plugin's folder to
-   their session's directories.
+   their session's directories; the panel then runs from the plugin's
+   own file.
 2. **If the path is refused** (the error says the script path must be
-   one the tool returned or a file you can already read), Read the
-   script in full and call the Workflow tool again with `script` set to
-   its exact contents, character for character, and the same arguments.
-   Don't shorten, reformat, or correct anything in it. Never copy it
-   into the user's repository to get round the refusal.
-3. **Check what ran.** The tool's result names the script file it
-   saved. Compare that file with the bundled one (`cmp` the two paths).
-   If they differ, stop the run at once with the task ID in the result,
-   and tell the user: a copying error means the panel that ran is not
-   this plugin's panel, and its verdict can't stand. Then dispatch
-   again.
+   one the tool returned or a file you can already read), **prepare
+   without running.** Read the script in full, and call the Workflow
+   tool with `script` set to its exact contents, character for
+   character, and the arguments `{"prepareOnly": true}` only. The script
+   returns at once, before any agent can start, and the tool's result
+   names the script file it saved. Don't shorten, reformat, or correct
+   anything in the script, and never copy it into the user's repository.
+3. **Check the saved copy before anything runs.** Compare the saved
+   file with the bundled one (`cmp` the two paths). If they differ, the
+   copy is wrong: prepare again. If a second copy also differs, stop,
+   and tell the user to add the plugin's folder to the session (for
+   example `/add-dir` with the folder that holds this skill's
+   `scripts/`), naming the folder.
+4. **Run the checked copy.** Call the Workflow tool with `scriptPath`
+   set to the saved file's path (the tool accepts a path it returned)
+   and the real arguments. No agent has run before this call, so the
+   approval from Step 2 covers it.
+
+A run that has to be repeated, for any reason, goes back through
+Step 2: approval covers one run.
 
 Record the run ID (`wf_…`) from the **Workflow tool's result**, for the
 stamp: the script's return value can't know it.
@@ -170,11 +180,14 @@ verdicts and findings per dimension; then the overall verdict
 (`CONFIRMED`, `QUALIFIED`, or `CHALLENGED` for adversarial; the
 `cleared` true-or-false for critical-friend); then prioritised
 recommendations (the meta-reviewer's priorities, weighted by
-convergence). **If `partialCoverage` is above 0, or `crossSection`,
-`metaReview`, or a triggered unanimous check came back null, say so at
-the top of the report: the verdict does not stand as a gate until the
-failed agents are re-run.** Present what the author must act on in three
-tiers:
+convergence). **If the result's `gateValid` is false, it has no verdict
+and no clearance.** Say so at the top of the report, name the stages
+that failed from `coverage` (the panel's count of lenses that ran, and
+the synthesis, unanimous check, and meta-review, each `ran`, `failed`,
+`not-required`, or `not-triggered`), and show the severity-only result
+from `provisional` only under that name: it does not stand as a gate
+until the failed stages are re-run. Present what the author must act on
+in three tiers:
 
 1. **Act-now mechanical batch:** pre-authorised, no per-item review.
 2. **Rulings needed:** before-and-after snippets with one line of context

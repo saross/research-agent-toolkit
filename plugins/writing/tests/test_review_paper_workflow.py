@@ -275,7 +275,7 @@ class TestConvergenceAnchors:
         """methods.tex:10-12 covers line 11, whatever path form each lens used."""
         result = self._two(tmp_path, "methods.tex:10-12", "/papers/example/sections/methods.tex:11")
         assert all(f.get("converged") for f in result["findings"])
-        assert [g["token"] for g in result["convergenceGroups"]] == ["line:methods.tex:11"]
+        assert [g["token"] for g in result["convergenceGroups"]] == ["line:sections/methods.tex:11"]
 
     def test_a_wide_range_counts_only_its_first_line(self, tmp_path: Path) -> None:
         """methods.tex:6-22 says nothing about line 15 in particular."""
@@ -301,4 +301,164 @@ class TestMetaReviewerContext:
         report = run(tmp_path, base_args(stance="adversarial"))
         meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
         assert "PAPER BRIEF" not in meta and "Source notes" not in meta
+
+
+class TestAnchorPathsKeepTheirFolders:
+    """Review finding R28: files of the same name in different folders stay apart."""
+
+    def test_same_name_in_two_folders_does_not_converge(self, tmp_path: Path) -> None:
+        result = TestConvergenceAnchors._two(
+            tmp_path, "sections/methods.tex:42", "appendix/methods.tex:42")
+        assert not any(f.get("converged") for f in result["findings"])
+
+    def test_a_bare_name_resolves_to_each_findings_own_target(self, tmp_path: Path) -> None:
+        """Two targets named methods.tex: "methods.tex:42" means each lens's own target."""
+        args = {"targets": [f"{REPO}/sections/methods.tex", f"{REPO}/appendix/methods.tex"],
+                "repo": REPO, "scope": "section"}
+        report = run(tmp_path, args, responses={
+            "consistency:methods.tex": {"passes": False, "clean": [], "confidence": "high",
+                                        "findings": [finding("minor", "methods.tex:42")]},
+        })
+        assert report["ok"], report.get("error")
+        # Each target's own lens resolves "methods.tex" to its own target, so the
+        # two findings (one per target) carry different tokens and do not converge.
+        assert not report["result"]["convergenceGroups"]
+
+
+class TestPrepareOnly:
+    """Review finding R27: the prepare-only call starts no agent."""
+
+    def test_prepare_only_returns_before_any_agent(self, tmp_path: Path) -> None:
+        report = run(tmp_path, {"prepareOnly": True})
+        assert report["ok"], report.get("error")
+        assert report["result"] == {"prepared": True}
+        assert report["calls"] == []
+
+    def test_prepare_only_must_be_exactly_true(self, tmp_path: Path) -> None:
+        """A string "true" is not the flag; the run goes on to validate its arguments."""
+        report = run(tmp_path, {"prepareOnly": "true"})
+        assert not report["ok"] and "targets" in report["error"]
+
+
+class TestRulingsReachEveryStage:
+    """Review finding R29: settled rulings reach synthesis, unanimous check, and meta-review."""
+
+    RULINGS = {"sections/methods.tex": "GUARD-M: mound and tumulus are synonyms.",
+               "sections/results.tex": "GUARD-R: the site stays unnamed."}
+
+    def _prompt(self, report: dict, label: str) -> str:
+        return next(c["prompt"] for c in report["calls"] if c["label"] == label)
+
+    def test_paper_scope_stages_get_every_register(self, tmp_path: Path) -> None:
+        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
+                "stance": "adversarial", "settledRulings": self.RULINGS}
+        report = run(tmp_path, args)
+        assert report["ok"], report.get("error")
+        for label in ("cross-section", "unanimous-check", "meta-reviewer"):
+            prompt = self._prompt(report, label)
+            assert "GUARD-M" in prompt and "GUARD-R" in prompt, label
+        synthesis = self._prompt(report, "cross-section")
+        assert "--- sections/methods.tex ---" in synthesis
+
+    def test_one_target_meta_review_gets_its_register(self, tmp_path: Path) -> None:
+        args = base_args(stance="adversarial", settledRulings=self.RULINGS,
+                         constraints="no first person")
+        meta = self._prompt(run(tmp_path, args), "meta-reviewer")
+        assert "GUARD-M" in meta and "GUARD-R" not in meta
+        assert "no first person" in meta
+
+    def test_a_single_string_register_appears_once(self, tmp_path: Path) -> None:
+        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
+                "settledRulings": "GUARD-ALL: one register."}
+        synthesis = self._prompt(run(tmp_path, args), "cross-section")
+        assert synthesis.count("GUARD-ALL") == 1
+
+
+class TestGateValidity:
+    """Review finding R30: an incomplete review gives no gate verdict."""
+
+    def test_a_complete_run_is_a_valid_gate(self, tmp_path: Path) -> None:
+        result = run(tmp_path, base_args(stance="adversarial"))["result"]
+        assert result["gateValid"] is True
+        assert result["coverage"] == {
+            "panel": {"expected": 4, "succeeded": 4}, "crossSection": "not-required",
+            "unanimousCheck": "ran", "metaReview": "ran"}
+        assert result["verdict"] == "CONFIRMED" and result["cleared"] is True
+
+    def test_a_missing_lens_withholds_the_verdict(self, tmp_path: Path) -> None:
+        result = run(tmp_path, base_args(stance="adversarial"),
+                     responses={"completeness": None})["result"]
+        assert result["gateValid"] is False
+        assert result["verdict"] is None and result["cleared"] is None
+        assert result["provisional"] == {"verdict": "CONFIRMED", "cleared": True}
+        assert result["coverage"]["unanimousCheck"] == "not-triggered"
+
+    @pytest.mark.parametrize("failure", [None, "throw"])
+    def test_a_failed_meta_review_withholds_the_verdict(self, tmp_path: Path, failure) -> None:
+        report = run(tmp_path, base_args(stance="adversarial"),
+                     responses={"meta-reviewer": failure})
+        assert report["ok"], report.get("error")  # a throw no longer aborts the run
+        result = report["result"]
+        assert result["coverage"]["metaReview"] == "failed"
+        assert result["gateValid"] is False and result["verdict"] is None
+
+    @pytest.mark.parametrize("failure", [None, "throw"])
+    def test_a_failed_unanimous_check_withholds_the_verdict(self, tmp_path: Path, failure) -> None:
+        result = run(tmp_path, base_args(stance="adversarial"),
+                     responses={"unanimous-check": failure})["result"]
+        assert result["coverage"]["unanimousCheck"] == "failed"
+        assert result["gateValid"] is False and result["verdict"] is None
+
+    @pytest.mark.parametrize("failure", [None, "throw"])
+    def test_a_failed_synthesis_withholds_clearance(self, tmp_path: Path, failure) -> None:
+        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO}
+        result = run(tmp_path, args, responses={"cross-section": failure})["result"]
+        assert result["coverage"]["crossSection"] == "failed"
+        assert result["gateValid"] is False and result["cleared"] is None
+        assert result["provisional"]["cleared"] is True
+
+    def test_critical_friend_section_needs_only_the_panel(self, tmp_path: Path) -> None:
+        result = run(tmp_path, base_args())["result"]
+        assert result["gateValid"] is True and result["cleared"] is True
+        assert result["coverage"]["metaReview"] == "not-required"
+
+
+class TestHarnessChecksItsOwnAnswers:
+    """The stand-in rejects answers the real schema would not allow."""
+
+    def test_an_invalid_canned_answer_is_a_test_error(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(), responses={"calibration": {"passes": True}})
+        assert not report["ok"] and "violates its schema" in report["error"]
+
+    def test_invalid_as_null_models_a_rejected_output(self, tmp_path: Path) -> None:
+        path = tmp_path / "scenario.json"
+        scenario = {"args": base_args(), "responses": {"calibration": {"passes": True}},
+                    "invalidAs": "null"}
+        path.write_text(json.dumps(scenario), encoding="utf-8")
+        proc = subprocess.run([NODE, str(HARNESS), str(SCRIPT), str(path)],
+                              capture_output=True, text=True, timeout=60, check=False)
+        result = json.loads(proc.stdout)["result"]
+        assert result["partialCoverage"] == 1 and result["gateValid"] is False
+
+
+class TestAmbiguousAnchorNames:
+    """A bare name matching several known files, none the finding's own, gives no token."""
+
+    @staticmethod
+    def _run(tmp_path: Path, context: list[str]) -> dict:
+        args = base_args(readOnlyContext=context)
+        return run(tmp_path, args, responses={
+            "consistency": {"passes": False, "clean": [], "confidence": "high",
+                            "findings": [finding("minor", "notes.tex:5")]},
+            "calibration": {"passes": False, "clean": [], "confidence": "high",
+                            "findings": [finding("minor", "notes.tex:5")]},
+        })["result"]
+
+    def test_two_known_files_of_that_name_give_no_token(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, [f"{REPO}/a/notes.tex", f"{REPO}/b/notes.tex"])
+        assert not result["convergenceGroups"]
+
+    def test_one_known_file_of_that_name_resolves(self, tmp_path: Path) -> None:
+        result = self._run(tmp_path, [f"{REPO}/a/notes.tex"])
+        assert [g["token"] for g in result["convergenceGroups"]] == ["line:a/notes.tex:5"]
 
