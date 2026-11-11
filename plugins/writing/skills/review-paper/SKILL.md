@@ -224,9 +224,15 @@ report as uncalibrated.
 The test: an adversarial run over a known-good, peer-reviewed,
 deliberately hedged section that the author nominates. **Pass:** no
 finding treats a calibrated hedge as a weakness, and any finding about a
-hedge shows real mis-calibration with evidence. **Fail:** say that the
-plugin's guard needs fixing, and treat hedging findings as uncalibrated
-until a later version passes. Record each test in a file of its own,
+hedge shows real mis-calibration with evidence. Count every finding the
+panel returns, including any the meta-reviewer rates unsound: the test is
+of the guard, not of the meta-reviewer. **Fail:** say that the plugin's
+guard needs fixing, and treat hedging findings as uncalibrated until a
+later version passes. **A section used to diagnose or fix the guard
+can't confirm the fix:** a pass on it counts only once the same script
+and model also pass on a second section that played no part in the fix.
+Record which sections a test used, and whether each was held out.
+Record each test in a file of its own,
 separate from any review report, `calibration-<YYYY-MM-DD>-<run ID>.md`,
 with the date and time of the run (UTC), the target, the outcome, the
 script's SHA-256, the plugin version, the model requested, and the model
