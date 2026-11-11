@@ -1996,3 +1996,132 @@ class TestBibtexFallbackAfterErrors:
         result = lit_search.cmd_bibtex(["10.9999/oops"], client)
         line = next(x for x in result.splitlines() if x.startswith("% FAILED"))
         assert "CrossRef: refused" in line and "doi.org: refused" in line
+
+
+class TestDoiExists:
+    """The existence check the verifier relies on before marking a DOI FAIL.
+
+    Astra's R33 and R34 (11 Nov 2026): only the DOI resolver's handle API
+    may say a DOI does not exist, the DOI must reach it whole, and only a
+    not-found answer about exactly that DOI is a negative. Everything else
+    is unverifiable, never a FAIL.
+    """
+
+    @staticmethod
+    def _answering(status, body, seen=None):
+        """A client whose every request gets `status` and `body`, recording requests."""
+
+        def handler(request):
+            if seen is not None:
+                seen.append(request)
+            if isinstance(body, (dict, list)):
+                return httpx.Response(status, json=body)
+            return httpx.Response(status, text=body)
+
+        return _client_on(handler)
+
+    def test_an_arxiv_doi_crossref_lacks_exists_at_the_resolver(self, reset_pacing):
+        doi = "10.48550/arXiv.2303.08774"
+        seen = []
+        client = self._answering(200, {"responseCode": 1, "handle": doi, "values": []}, seen)
+        result = lit_search.cmd_doi_exists(doi, client)
+        assert result["state"] == "exists"
+        assert seen[0].url.host == "doi.org"
+        assert seen[0].url.raw_path == b"/api/handles/10.48550/arXiv.2303.08774"
+
+    def test_not_found_for_the_exact_doi_is_the_negative(self, reset_pacing):
+        doi = "10.1016/not-real-zz9"
+        client = self._answering(404, {"responseCode": 100, "handle": doi})
+        result = lit_search.cmd_doi_exists(doi, client)
+        assert result["state"] == "not_found"
+        assert (result["http_status"], result["response_code"]) == (404, 100)
+
+    def test_a_doi_with_no_values_exists_but_is_not_confirmed_as_the_paper(
+        self, reset_pacing
+    ):
+        doi = "10.1000/empty"
+        client = self._answering(200, {"responseCode": 200, "handle": doi})
+        assert lit_search.cmd_doi_exists(doi, client)["state"] == "exists_no_values"
+
+    @pytest.mark.parametrize("body", ["<html>Not found</html>", "", ["a", "list"]])
+    def test_a_body_that_is_not_the_handle_json_is_unverifiable(self, reset_pacing, body):
+        client = self._answering(404, body)
+        result = lit_search.cmd_doi_exists("10.1016/x", client)
+        assert result["state"] == "unverifiable"
+        assert "JSON" in result["reason"]
+
+    def test_an_answer_about_another_identifier_is_unverifiable(self, reset_pacing):
+        client = self._answering(404, {"responseCode": 100, "handle": "10.1016/abc"})
+        result = lit_search.cmd_doi_exists("10.1016/abc#def", client)
+        assert result["state"] == "unverifiable"
+        assert "different identifier" in result["reason"]
+
+    def test_a_missing_echo_is_unverifiable(self, reset_pacing):
+        client = self._answering(404, {"responseCode": 100})
+        assert lit_search.cmd_doi_exists("10.1016/x", client)["state"] == "unverifiable"
+
+    def test_the_echo_is_compared_without_case(self, reset_pacing):
+        client = self._answering(
+            200, {"responseCode": 1, "handle": "10.48550/ARXIV.2303.08774"}
+        )
+        result = lit_search.cmd_doi_exists("10.48550/arXiv.2303.08774", client)
+        assert result["state"] == "exists"
+
+    def test_reserved_characters_reach_the_resolver_whole(self, reset_pacing):
+        doi = "10.1000/a#b?c=d%e f"
+        seen = []
+        client = self._answering(404, {"responseCode": 100, "handle": doi}, seen)
+        result = lit_search.cmd_doi_exists(doi, client)
+        assert seen[0].url.raw_path == b"/api/handles/10.1000/a%23b%3Fc%3Dd%25e%20f"
+        assert seen[0].url.query == b""
+        assert result["state"] == "not_found"
+
+    def test_a_doi_written_as_a_link_is_looked_up_bare(self, reset_pacing):
+        seen = []
+        client = self._answering(200, {"responseCode": 1, "handle": "10.1000/1"}, seen)
+        result = lit_search.cmd_doi_exists("https://doi.org/10.1000/1", client)
+        assert result["state"] == "exists" and result["doi"] == "10.1000/1"
+        assert seen[0].url.raw_path == b"/api/handles/10.1000/1"
+
+    def test_something_that_is_not_a_doi_is_never_looked_up(self, reset_pacing):
+        seen = []
+        client = self._answering(404, {"responseCode": 100, "handle": "x"}, seen)
+        result = lit_search.cmd_doi_exists("arXiv:2303.08774", client)
+        assert result["state"] == "unverifiable" and seen == []
+
+    @pytest.mark.parametrize(
+        ("status", "body"),
+        [
+            (404, {"responseCode": 1, "handle": "10.1016/x"}),
+            (200, {"responseCode": 100, "handle": "10.1016/x"}),
+            (200, {"responseCode": True, "handle": "10.1016/x"}),
+            (400, {"responseCode": 2, "handle": "10.1016/x"}),
+            (302, {"responseCode": 1, "handle": "10.1016/x"}),
+        ],
+    )
+    def test_an_unexpected_pairing_is_unverifiable(self, reset_pacing, status, body):
+        client = self._answering(status, body)
+        assert lit_search.cmd_doi_exists("10.1016/x", client)["state"] == "unverifiable"
+
+    def test_a_rate_limit_after_retries_is_unverifiable(self, reset_pacing, no_real_sleep):
+        seen = []
+        client = self._answering(429, {"responseCode": 1, "handle": "10.1016/x"}, seen)
+        result = lit_search.cmd_doi_exists("10.1016/x", client)
+        assert result["state"] == "unverifiable" and result["http_status"] == 429
+        assert len(seen) == lit_search.MAX_RETRIES
+
+    def test_no_answer_is_unverifiable(self, reset_pacing, no_real_sleep):
+        def handler(request):
+            raise httpx.ConnectTimeout("timed out", request=request)
+
+        result = lit_search.cmd_doi_exists("10.1016/x", _client_on(handler))
+        assert result["state"] == "unverifiable"
+        assert "ConnectTimeout" in result["reason"]
+
+    def test_the_lookup_has_finite_timeouts_and_follows_no_redirect(self, reset_pacing):
+        seen = []
+        client = self._answering(302, {"responseCode": 1, "handle": "10.1016/x"}, seen)
+        result = lit_search.cmd_doi_exists("10.1016/x", client)
+        timeout = seen[0].extensions["timeout"]
+        assert timeout["connect"] == 10.0 and timeout["read"] == 15.0
+        assert len(seen) == 1 and result["state"] == "unverifiable"

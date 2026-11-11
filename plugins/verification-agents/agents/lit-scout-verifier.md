@@ -117,16 +117,20 @@ claims fails.
 
 Two different things can stop a check, and they must not share a verdict.
 
-- **The registry answers authoritatively that the DOI doesn't exist:** an
-  HTTP 404 from the DOI resolver's handle check below, or a well-formed
-  empty result from an otherwise healthy API. A 404 from CrossRef alone
-  is not enough: CrossRef holds only the DOIs it registered, and answers
-  404 for every arXiv, Zenodo, or other DataCite DOI. That is a real finding about the candidate:
-  record `status: fail` on the `doi_resolves` claim.
+- **The DOI resolver answers that this exact DOI doesn't exist:**
+  `lit-search doi-exists` (below) returns `"state": "not_found"`. That is
+  a real finding about the candidate, and the only grounds for
+  `status: fail` on the `doi_resolves` claim for want of a DOI. A missing
+  record anywhere else is not: CrossRef holds only the DOIs it registered
+  and answers 404 for every arXiv, Zenodo, or other DataCite DOI, and
+  Semantic Scholar and OpenAlex are indexes that can lack a real DOI.
+  However healthy the API, a 404 or an empty result from any of the three
+  leaves existence undetermined until `doi-exists` has answered.
 - **The check couldn't be completed:** HTTP 429, any 5xx error, a timeout,
-  a connection error, an exhausted API budget, or a 200 whose payload is
-  empty in a way that suggests throttling rather than absence. Mark the
-  claim **`unverifiable`**.
+  a connection error, an exhausted API budget, a 200 whose payload is
+  empty in a way that suggests throttling rather than absence, or
+  `doi-exists` returning `"state": "unverifiable"`. Mark the claim
+  **`unverifiable`**.
 
 **`unverifiable` describes the check, not the candidate.** It means "I
 didn't find out", never "this paper doesn't exist". A row you couldn't
@@ -145,19 +149,27 @@ authoritative zero.
 retry returns nothing, so the caller sees the same result for a 404 as for
 a 429, and `metadata` reports both as
 `{"error": "No metadata found for DOI: ..."}`. This is a known limitation.
-Until the helper returns three distinct states, **treat "No metadata
-found" as undetermined until you have seen a status code**, by checking
-the DOI directly against the DOI resolver, which answers for every
-registry:
+Until `metadata` is fixed, **treat "No metadata found" as undetermined**, and ask the
+DOI resolver, which answers for every registry:
 
 ```bash
-curl -sS -o /dev/null -w '%{http_code}\n' "https://doi.org/api/handles/<doi>"
+"${CLAUDE_PLUGIN_ROOT}/scripts/lit-search" doi-exists "DOI"
 ```
 
-A 200 means the DOI exists, whichever registry holds it. A 404 justifies
-`fail`. A 429, a 5xx, or no answer at all means
-`unverifiable`. If you can't get a status code, the claim is
-`unverifiable`, never `fail`.
+Pass the proposer's `doi` field unchanged; the helper encodes it, so a
+suffix holding `#` or `?` reaches the resolver whole, and it accepts an
+answer only if the resolver's echo names the same DOI. Its `state`:
+
+| `state` | What the resolver said | `doi_resolves` |
+| --- | --- | --- |
+| `exists` | It holds this DOI | Not a FAIL. Existence isn't identity: the claim passes only if a record you have read (from `metadata` or the arXiv API) is the expected paper; otherwise `unverifiable` |
+| `exists_no_values` | The DOI exists, but no values came back | As for `exists` |
+| `not_found` | This exact DOI doesn't exist | `fail` |
+| `unverifiable` | No answer, a rate limit, a server error, a body that wasn't its JSON, or an answer about another identifier | `unverifiable` |
+
+Don't ask doi.org with a hand-written `curl`: a raw DOI in a URL loses
+everything after a `#` or `?`, and a bare status code can't show which
+identifier it was about.
 
 ### arXiv rows (DOIs of the form 10.48550/arXiv.\<id\>)
 
@@ -191,7 +203,7 @@ for each claim, and the PARTIAL band sits between PASS and FAIL:
 | `year` | Exact match | Within one year (CrossRef sometimes gives the publication date and sometimes the first-online date) | More than one year out |
 | `title` | Approximate match (capitalisation, punctuation, and a leading "The" may vary) | The same paper, with markedly different wording, such as a subtitle present in one and absent in the other | A different paper |
 | `citation_count` | Within 10% or 20 (whichever is larger) | Within 25% or 50, but outside the PASS band | Further out: a different paper, a stale fetch, or a count from a different API |
-| `doi_resolves` | The DOI resolves to the expected paper | (No PARTIAL: the check is binary) | The registry reports authoritatively that the DOI doesn't exist (a status code you have seen, normally 404), or it resolves to a different paper. A lookup that didn't complete is `unverifiable`, never FAIL |
+| `doi_resolves` | The DOI resolves to the expected paper | (No PARTIAL: the check is binary) | `lit-search doi-exists` returns `not_found` for this DOI, or the DOI resolves to a different paper. A lookup that didn't complete, and a missing CrossRef, Semantic Scholar, or OpenAlex record, are `unverifiable`, never FAIL |
 
 **Why count and later-author mismatches must be FAIL, not PARTIAL.** The
 iterate command acts on FAIL only. A PARTIAL verdict reaches the user as
@@ -441,8 +453,8 @@ BibTeX file path separately.)
 ```jsonl
 {"claim_id":"10.xxxx-yyyy-authors","doi":"10.xxxx/yyyy","status":"fail","category":"authors","description":"Authors for row N","proposer_value":"Smith et al. (2024)","true_value":"Jones, Wei & Park (2024)","severity":"high","failure_type":"encoding_artefact","fix_hint":"CrossRef returns authors[0].family='Jones'; substitute in row N's Authors (Year) column. CrossRef family/given was swapped at the source.","source_method":"lit-search metadata","source_file":"Findings table row N"}
 {"claim_id":"10.xxxx-yyyy-year","doi":"10.xxxx/yyyy","status":"pass","category":"year","description":"Publication year for row N","proposer_value":2024,"true_value":2024,"severity":null,"failure_type":null,"fix_hint":null,"source_method":"lit-search metadata","source_file":"Findings table row N"}
-{"claim_id":"10.xxxx-yyyy-doi_resolves","doi":"10.xxxx/yyyy","status":"fail","category":"doi_resolves","description":"DOI resolves to expected paper for row M","proposer_value":true,"true_value":false,"severity":"high","failure_type":"confabulation","fix_hint":"CrossRef returned HTTP 404 on direct re-check; the candidate appears fabricated. Remove row M from the Findings table in iterate mode.","source_method":"lit-search metadata, confirmed by direct CrossRef GET (HTTP 404)","source_file":"Findings table row M"}
-{"claim_id":"10.xxxx-zzzz-doi_resolves","doi":"10.xxxx/zzzz","status":"unverifiable","category":"doi_resolves","description":"DOI resolves to expected paper for row P","proposer_value":true,"true_value":null,"severity":null,"failure_type":null,"fix_hint":null,"source_method":"lit-search metadata returned no result; direct CrossRef GET returned HTTP 429 (retry-after 58281). Check did not complete; row preserved.","source_file":"Findings table row P"}
+{"claim_id":"10.xxxx-yyyy-doi_resolves","doi":"10.xxxx/yyyy","status":"fail","category":"doi_resolves","description":"DOI resolves to expected paper for row M","proposer_value":true,"true_value":false,"severity":"high","failure_type":"confabulation","fix_hint":"lit-search doi-exists returned not_found (HTTP 404, responseCode 100, echoed handle 10.xxxx/yyyy); the candidate appears fabricated. Remove row M from the Findings table in iterate mode.","source_method":"lit-search metadata found no record; lit-search doi-exists: not_found (HTTP 404, responseCode 100)","source_file":"Findings table row M"}
+{"claim_id":"10.xxxx-zzzz-doi_resolves","doi":"10.xxxx/zzzz","status":"unverifiable","category":"doi_resolves","description":"DOI resolves to expected paper for row P","proposer_value":true,"true_value":null,"severity":null,"failure_type":null,"fix_hint":null,"source_method":"lit-search metadata found no record; lit-search doi-exists: unverifiable (HTTP 429 after retries). Check did not complete; row preserved.","source_file":"Findings table row P"}
 ```
 <!-- END corrections.jsonl -->
 ````
@@ -469,7 +481,7 @@ The fields:
 | `true_value` | Your value, re-derived from `lit-search metadata`; `null` when `status` is `unverifiable` |
 | `severity` | `high`, `medium`, `low`, or `null`; set only for FAIL claims |
 | `failure_type` | `confabulation`, `encoding_artefact`, `metadata_drift`, `stale_count`, or `null`; set only for FAIL claims (see the severity and failure_type sections above) |
-| `fix_hint` | **Specific and actionable**: tells the proposer's iterate mode what to substitute. For example: `"CrossRef returns authors[0].family='Jones'; substitute in row N's Authors (Year) column. DOI itself is correct; only authorship was confabulated."` For `doi_resolves` failures, cite the status code you saw: `"CrossRef returned HTTP 404 on direct re-check; remove row N from the Findings table in iterate mode."` `null` for PASS, PARTIAL, and unverifiable claims |
+| `fix_hint` | **Specific and actionable**: tells the proposer's iterate mode what to substitute. For example: `"CrossRef returns authors[0].family='Jones'; substitute in row N's Authors (Year) column. DOI itself is correct; only authorship was confabulated."` For `doi_resolves` failures, cite what `doi-exists` returned: `"lit-search doi-exists returned not_found (HTTP 404, responseCode 100); remove row N from the Findings table in iterate mode."` `null` for PASS, PARTIAL, and unverifiable claims |
 | `source_method` | What you used: `lit-search metadata`, plus any fallback |
 | `source_file` | The proposer's `source_file`, echoed |
 
@@ -504,10 +516,11 @@ The fields:
   the empty payload, so a reader can tell a throttled run from a real gap.
   `true_value`, `severity`, `failure_type`, and `fix_hint` are all `null`.
   Never write a removal instruction into an unverifiable claim's `fix_hint`.
-- **A `doi_resolves` FAIL needs a status code you have seen.** Don't infer
-  one from `lit-search` reporting "No metadata found", which it says for
-  HTTP 429 as readily as for HTTP 404. Check directly, and if that check
-  doesn't complete either, the claim is `unverifiable`.
+- **A `doi_resolves` FAIL for a missing DOI needs `doi-exists` to have
+  returned `not_found`.** Don't infer it from `lit-search` reporting "No
+  metadata found", which it says for HTTP 429 as readily as for a DOI no
+  index holds. If `doi-exists` returns anything else, a missing record is
+  no grounds for a FAIL.
 
 ## Adversarial posture
 

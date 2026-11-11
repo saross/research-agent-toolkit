@@ -16,6 +16,8 @@ Usage:
     lit-search.py citations DOI
     lit-search.py search "QUERY"
     lit-search.py openalex-cited-by DOI
+    lit-search.py doi-exists DOI
+    lit-search.py bibtex DOI [DOI ...]
 
 Requires: httpx, and bibtexparser 1.x for the bibtex subcommand. The `lit-search` wrapper
 beside this file runs it through `uv`, which installs both on first use.
@@ -1374,6 +1376,111 @@ def cmd_openalex_cited_by(
 
 
 # ============================================================================
+# Subcommand: doi-exists
+# ============================================================================
+
+# The DOI resolver's handle API answers for every registration agency
+# (CrossRef, DataCite, and the rest), so it is the one place that can say a
+# DOI does not exist; CrossRef answers 404 for every DOI it did not register.
+# Documented in the DOI Foundation's "DOI URI Scheme" (sections 2 and 4) and
+# the Handle.Net proxy server's REST API: responseCode 1 with HTTP 200 is
+# found, 100 with HTTP 404 is not found, and 200 with HTTP 200 is a handle
+# with no values to return.
+DOI_HANDLE_API = f"{DOI_RESOLVER}/api/handles"
+DOI_HANDLE_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
+
+# Forms a DOI is sometimes written in; the handle API needs the bare DOI.
+_DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", re.IGNORECASE)
+
+
+def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
+    """
+    Ask the DOI resolver whether *doi* exists, as one of four states.
+
+    The returned dict's ``state`` is:
+
+    * ``exists``: the resolver holds the DOI (HTTP 200, responseCode 1).
+      Existence only: whether it identifies the expected paper is a
+      separate check.
+    * ``exists_no_values``: the DOI exists but the resolver returned no
+      values for it (HTTP 200, responseCode 200). Also existence only.
+    * ``not_found``: the resolver answered, for exactly this DOI, that it
+      does not exist (HTTP 404, responseCode 100). The only authoritative
+      negative.
+    * ``unverifiable``: anything else, which says nothing about the DOI: no
+      answer, a rate limit, a server error, a redirect, a body that is not
+      the handle API's JSON, an answer about a different identifier, or an
+      unexpected pairing of status and responseCode.
+
+    The DOI is percent-encoded once for the path, keeping its ``/``, so a
+    suffix holding ``#``, ``?`` or ``%`` reaches the resolver whole. The
+    resolver echoes the handle it looked up, and an answer counts only if
+    the echo matches the DOI asked for (without regard to case, since DOIs
+    are case-insensitive).
+    """
+    requested = _DOI_PREFIX.sub("", doi.strip())
+    result: dict[str, Any] = {
+        "doi": requested,
+        "state": "unverifiable",
+        "http_status": None,
+        "response_code": None,
+        "reason": "",
+    }
+    if not requested.startswith("10.") or "/" not in requested:
+        result["reason"] = "not a DOI (expected 10.<prefix>/<suffix>)"
+        return result
+
+    url = f"{DOI_HANDLE_API}/{urllib.parse.quote(requested, safe='/')}"
+    try:
+        resp = _request_with_retry(
+            lambda: client.get(url, timeout=DOI_HANDLE_TIMEOUT, follow_redirects=False),
+            host=_host_of(url),
+            source="doi.org",
+        )
+    except httpx.HTTPError as exc:
+        result["reason"] = f"no answer from the resolver ({type(exc).__name__})"
+        return result
+
+    status = resp.status_code
+    result["http_status"] = status
+    if status not in (200, 404):
+        # A rate limit, a server error, a redirect, or anything else the
+        # handle API does not use for a completed lookup.
+        result["reason"] = f"HTTP {status}: the lookup did not complete"
+        return result
+
+    try:
+        body = resp.json()
+    except ValueError:  # json.JSONDecodeError is a ValueError
+        body = None
+    if not isinstance(body, dict):
+        result["reason"] = "the answer is not the handle API's JSON"
+        return result
+
+    code = body.get("responseCode")
+    if isinstance(code, bool) or not isinstance(code, int):
+        code = None
+    result["response_code"] = code
+    echoed = body.get("handle")
+    if not isinstance(echoed, str) or echoed.casefold() != requested.casefold():
+        result["reason"] = f"the answer is about a different identifier ({echoed!r})"
+        return result
+
+    if (status, code) == (200, 1):
+        result["state"] = "exists"
+        result["reason"] = "the resolver holds this DOI"
+    elif (status, code) == (200, 200):
+        result["state"] = "exists_no_values"
+        result["reason"] = "the DOI exists, but the resolver returned no values for it"
+    elif (status, code) == (404, 100):
+        result["state"] = "not_found"
+        result["reason"] = "the resolver answered that this DOI does not exist"
+    else:
+        result["reason"] = f"unexpected answer: HTTP {status} with responseCode {code!r}"
+    return result
+
+
+# ============================================================================
 # Subcommand: bibtex
 # ============================================================================
 
@@ -1697,6 +1804,13 @@ def main() -> None:
         help=f"Maximum results (default: {DEFAULT_CITATION_LIMIT})",
     )
 
+    # doi-exists
+    p_exists = subparsers.add_parser(
+        "doi-exists",
+        help="Ask the DOI resolver whether a DOI exists, in any registry",
+    )
+    p_exists.add_argument("doi", help="DOI to look up, unencoded")
+
     # bibtex
     p_bib = subparsers.add_parser(
         "bibtex",
@@ -1723,6 +1837,8 @@ def main() -> None:
             result = cmd_openalex_cited_by(
                 args.doi, client, args.limit
             )
+        elif args.command == "doi-exists":
+            result = cmd_doi_exists(args.doi, client)
         elif args.command == "bibtex":
             # BibTeX output is plain text, not JSON
             bibtex = cmd_bibtex(args.dois, client)

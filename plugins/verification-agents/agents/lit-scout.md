@@ -53,6 +53,7 @@ deduplication. It ships with this plugin:
 | `citations DOI` | Forward chaining: papers that cite it | `citations "10.1371/journal.pcbi.1009041" --limit 20` |
 | `search "QUERY"` | Keyword or title search | `search "FAIR vocabulary SKOS"` |
 | `openalex-cited-by DOI` | High-volume cited-by (free) | `openalex-cited-by "10.1371/journal.pcbi.1009041"` |
+| `doi-exists DOI` | Whether a DOI exists in any registry (the verifier's check) | `doi-exists "10.48550/arXiv.2303.08774"` |
 | `bibtex DOI [DOI ...]` | Generate BibTeX entries | `bibtex "10.1371/..." "10.1038/..."` |
 
 Output is JSON on standard output (BibTeX for `bibtex`); status and
@@ -396,11 +397,13 @@ entirely. Your job in iterate mode is targeted correction:
    Don't substitute a replacement paper.
 
    **Removal needs an authoritative negative.** The verifier's rules allow
-   a `doi_resolves` FAIL only where it saw a status code, normally HTTP
-   404. If a `fix_hint` asks you to remove a row but the `source_method`
-   records a rate limit, a server error, a timeout, or no status at all,
-   **don't remove it**. Keep the row, and say in Proposer self-check that
-   you declined the removal because the check hadn't completed. A
+   a `doi_resolves` FAIL for a missing DOI only where
+   `lit-search doi-exists` returned `not_found` for that exact DOI. If a
+   `fix_hint` asks you to remove a row but the `source_method` records only
+   a missing CrossRef, Semantic Scholar, or OpenAlex record, a rate limit,
+   a server error, a timeout, or no status at all, **don't remove it**.
+   Keep the row, and say in Proposer self-check that you declined the
+   removal because the check hadn't completed. A
    throttled API and a fabricated citation look the same from outside, and
    only one of them justifies deleting somebody's reference.
 4. **Re-emit the report.** Pass every section of the previous draft
