@@ -512,3 +512,65 @@ class TestHedgingGuardEverywhere:
         report = run(tmp_path, base_args())
         assert all("HEDGING GUARD" in c["prompt"] for c in report["calls"])
 
+
+
+class TestMetaReviewerGetsEachFindingsConditions:
+    """Review finding R35: the meta-reviewer is told to test each finding against its
+    retraction condition, so each finding's own conditions must reach it, attached to it."""
+
+    @staticmethod
+    def _entries(meta: str) -> list[str]:
+        """The digest's entries, one per finding, from the meta-reviewer's prompt."""
+        digest = meta.split("PANEL FINDINGS:", 1)[1].split("MECHANICAL PRE-PASS", 1)[0]
+        return ["[" + part for part in digest.split("\n[") if part.strip()]
+
+    def test_each_findings_conditions_travel_with_it(self, tmp_path: Path) -> None:
+        def sentinel_finding(tag: str) -> dict:
+            return finding("major", detail=f"detail-{tag}", targetClaim=f"claim-{tag}",
+                           counterCondition=f"COUNTER-{tag}",
+                           retractionCondition=f"RETRACT-{tag}")
+
+        report = run(tmp_path, base_args(stance="adversarial"), responses={
+            "calibration": {"passes": False, "findings": [sentinel_finding("A")],
+                            "clean": [], "confidence": "high"},
+            "source-fidelity": {"passes": False, "findings": [sentinel_finding("B")],
+                                "clean": [], "confidence": "high"},
+        })
+        meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
+        entries = self._entries(meta)
+        for tag in ("A", "B"):
+            mine = [e for e in entries if f"detail-{tag}" in e]
+            assert len(mine) == 1, entries
+            assert f"counter-condition: COUNTER-{tag}" in mine[0]
+            assert f"retraction condition: RETRACT-{tag}" in mine[0]
+            other = "B" if tag == "A" else "A"
+            assert f"RETRACT-{other}" not in mine[0]
+
+    def test_a_finding_without_conditions_says_so(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(stance="adversarial"), responses={
+            "calibration": {"passes": False, "findings": [finding("minor", detail="bare")],
+                            "clean": [], "confidence": "high"},
+        })
+        meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
+        bare = next(e for e in self._entries(meta) if "bare" in e)
+        assert "retraction condition: (none stated)" in bare
+
+
+class TestHedgingGuardIsNarrow:
+    """Review finding R36: calibrated wording protects only a hedging objection, never a
+    substantive defect the text happens to acknowledge. These pin the wording; whether a
+    model honours it is for the paired calibration run."""
+
+    def test_every_prompt_keeps_substantive_defects_reportable(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(stance="adversarial"))
+        for call in report["calls"]:
+            prompt = call["prompt"]
+            assert "covers one kind of objection only" in prompt, call["label"]
+            assert "does NOT protect a substantive defect" in prompt, call["label"]
+
+    def test_the_meta_reviewer_treats_the_two_kinds_differently(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(stance="adversarial"))
+        meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
+        assert "(a) A finding whose sole objection is the presence or degree of hedging" in meta
+        assert "calibrated wording is no answer to it" in meta
+        assert "quote what satisfies it in the note" in meta

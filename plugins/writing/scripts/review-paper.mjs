@@ -283,10 +283,16 @@ grep hit, citekey, or verbatim quote) — no anchor, no finding.`
 // --- Shared prompt scaffolding ----------------------------------------------
 const HEDGING_GUARD = `HEDGING GUARD (applies to every dimension, not only calibration): careful humanities and
 social-science prose uses deliberate hedging, risk, and limitation language as a mark of rigour.
-A calibrated hedge is a strength. Don't report hedging, cautious framing, or an acknowledged
-limitation as a weakness unless you can show the hedge is mis-calibrated against the evidence it
-covers. Before reporting any finding about a hedged claim, check whether the existing wording
-already meets the finding's own retraction condition; if it does, there is no finding.
+A calibrated hedge is a strength. The guard covers one kind of objection only: one whose sole
+complaint is the presence or degree of uncertainty wording (the claim is hedged, or hedged too
+much or too little). Don't report that unless you can show the hedge is mis-calibrated, in either
+direction, against the evidence it covers; and before reporting it, check whether the existing
+wording already meets the finding's own retraction condition; if it does, there is no finding.
+The guard does NOT protect a substantive defect because the text acknowledges it: an unsupported
+inference, a wrong citation or fact, a missing evidential basis, a methodological defect, or an
+unmet binding requirement is still a finding when the limitation is openly stated (an honest "we
+had no comparison group" does not make a causal claim sound). Judge such a defect on its own
+terms: it is answered only if the text actually supplies what its retraction condition asks for.
 (Language-model reviewers systematically underrate hedged prose; don't be that reviewer.)`
 
 const STANDING_INSTRUCTIONS_CAUTION = `Your context may also hold the user's standing instructions or memories (for example a
@@ -398,7 +404,8 @@ produced false "uncited" findings before).`,
     STRENGTH — do NOT flag hedging, cautious framing, or limitation acknowledgements as
     weakness unless you can show the hedge is genuinely mis-calibrated against the
     evidence it covers. (LLM reviewers systematically underrate hedged prose; do not be
-    that reviewer.)
+    that reviewer.) This guard is about the wording: a substantive defect the text
+    acknowledges is still a finding (see the HEDGING GUARD).
 (3) Altitude: the body should argue at altitude with limited illustrative examples;
     exhaustive detail belongs in a supplement. Flag raw detail leaking into the body, and
     argument floating with no example at all.
@@ -769,10 +776,15 @@ Return a LENS_VERDICT (lens = "unanimous-check").`,
   // report is assembled. Critiques and prioritises; NEVER overrides the
   // computed verdict (a design constraint: an editor-style aggregator may
   // prioritise findings, but the severities alone decide the verdict).
+  // Each finding carries its own counter-condition and retraction condition,
+  // because the meta-reviewer is told to test findings against them (review
+  // finding R35: the digest once left both out).
   const digest = all.map((f) =>
     `[${f.ref}] (${f.lens} @ ${shortName(f.target)}) ${f.severity}` +
     `${f.converged ? ' CONVERGED' : ''}: ${f.detail}\n    evidence: ${f.evidence}` +
-    `${f.targetClaim ? `\n    target claim: ${f.targetClaim}` : ''}`).join('\n')
+    `${f.targetClaim ? `\n    target claim: ${f.targetClaim}` : ''}` +
+    `\n    counter-condition: ${f.counterCondition || '(none stated)'}` +
+    `\n    retraction condition: ${f.retractionCondition || '(none stated)'}`).join('\n')
   metaReview = await auxiliary(`You are the META-REVIEWER (editor persona) in an adversarial review pipeline. A panel
 of fresh-context sceptic lenses has reviewed ${TARGETS.length} section(s) of a manuscript
 (repo: ${REPO}; targets: ${TARGETS.join(', ')}). Your job is to review the REVIEWS —
@@ -785,10 +797,17 @@ ${metaContext()}
 
 ${HEDGING_GUARD}
 
-For any finding about a hedge, cautious wording, or a stated limitation, check first whether the
-hedge is calibrated, and whether the text already meets the finding's retraction condition. If
-either holds, the finding is not sound: classify it semantic-drift (or placeholder, if it would
-apply to any hedged prose), say why in its note, and list it in verifyBeforePresenting.
+The HEDGING GUARD separates two kinds of finding; decide which kind each is before classifying it.
+(a) A finding whose sole objection is the presence or degree of hedging or cautious wording: it
+is sound only if its evidence shows the hedge mis-calibrated, in either direction. If the hedge is
+calibrated, or the text already meets the finding's retraction condition, the finding is not
+sound: classify it semantic-drift (or placeholder, if it would apply to any hedged prose), say why
+in its note, and list it in verifyBeforePresenting.
+(b) A finding about a substantive defect (an unsupported inference, a wrong citation or fact, a
+missing evidential basis, a methodological defect, or an unmet binding requirement), including one
+the text openly acknowledges: calibrated wording is no answer to it. Classify it on its evidence
+like any other finding. Reject it as answered only if the text or the supplied evidence actually
+satisfies its stated retraction condition, and quote what satisfies it in the note.
 
 For EACH finding below, classify its trustworthiness:
 - sound — well-grounded; evidence anchor checks out.
