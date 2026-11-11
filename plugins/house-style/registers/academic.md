@@ -1,7 +1,7 @@
 ---
 name: register-academic-default
 description: >-
-  Generic academic prose register bundled with the writing plugin: the
+  Generic academic prose register bundled with the house-style plugin: the
   drafting contract, voice and stance, sentence construction,
   punctuation, anti-flourish rules, and a quantitative gate. Used by the
   academic-prose skill when the user has set no register of their own.

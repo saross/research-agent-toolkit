@@ -1,6 +1,6 @@
 {
-  "name": "writing",
-  "displayName": "Writing",
+  "name": "house-style",
+  "displayName": "House style",
   "version": "0.1.0",
   "description": "Drafting discipline for academic prose and email, with your own register loaded before any drafting, and a fresh-context review panel for paper drafts that computes its verdict from finding severities.",
   "author": { "name": "Shawn Ross", "url": "https://github.com/saross" },

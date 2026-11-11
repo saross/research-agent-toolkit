@@ -26,8 +26,8 @@
       "category": "research"
     },
     {
-      "name": "writing",
-      "source": "./plugins/writing",
+      "name": "house-style",
+      "source": "./plugins/house-style",
       "description": "Register-gated drafting for academic prose and email, and a fresh-context review panel for paper drafts.",
       "category": "research"
     },

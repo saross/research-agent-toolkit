@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mechanical pre-pass for the review-paper skill of the writing plugin.
+"""Mechanical pre-pass for the review-paper skill of the house-style plugin.
 
 Deterministic checks, with no language model, that run BEFORE any review
 agent is dispatched. Findings feed the review report directly and are merged
@@ -651,7 +651,7 @@ def main() -> int:
                   'build-gate']
 
     report = {
-        'generated_by': 'review-paper-prepass.py (writing plugin)',
+        'generated_by': 'review-paper-prepass.py (house-style plugin)',
         'spell_lang': args.spell_lang,
         'repo': str(repo),
         'targets': args.targets,

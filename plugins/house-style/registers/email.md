@@ -1,7 +1,7 @@
 ---
 name: register-email-default
 description: >-
-  Generic email register bundled with the writing plugin: the shape, the
+  Generic email register bundled with the house-style plugin: the shape, the
   three-way hedge test, recipient tiers, mechanics, and exit checks for
   drafts that the sender revises before sending. Used by the draft-email
   skill when the user has set no register of their own.

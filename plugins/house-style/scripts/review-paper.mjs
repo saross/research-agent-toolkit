@@ -1,7 +1,7 @@
 /**
  * review-paper — multi-lens review panel for academic paper prose
  * ===========================================================================
- * The workflow behind the review-paper skill of the writing plugin
+ * The workflow behind the review-paper skill of the house-style plugin
  * (research-agent-toolkit). Run it through that skill, which runs the
  * mechanical pre-pass first and asks before spending on agents; it is kept in
  * scripts/, not workflows/, so it is not offered as a command of its own.
