@@ -69,9 +69,9 @@ Kept deliberately coarse.
 
 ## Mechanics
 
-- **Contractions throughout**: "we're", "I'd", "isn't". A formal draft
-  is the model's register, not the sender's.
-- **No em-dashes.** Type `--` where a dash is needed.
+- **Contractions by default**: "we're", "I'd", "isn't". A personal
+  register can say otherwise.
+- **No dashes.** Recast the sentence, or use a comma or brackets.
 - **Asks are questions** with question marks, not statements of desire.
   Yes: "Can we mention the project by name?" No: "I would like to
   mention the project, if you are comfortable with that."
@@ -84,8 +84,8 @@ Kept deliberately coarse.
   personal register records. Without one, use "Hi Name," for a
   colleague, "Dear Name," for a first contact or a favour, and the
   sender's first name to sign.
-- **Parenthetical asides** are fine when they add information; cut the
-  ones that add doubt about the sender.
+- **Parentheses carry information**, not caveats or doubt about the
+  sender.
 
 ## Rule 4: concise is the default, not an instruction
 
@@ -175,15 +175,16 @@ problem, and I won't write again.").
 
 ## Exit checks before handing over a draft
 
-1. **Where is the ask?** If it isn't in the first three sentences of
-   its paragraph, move it.
+1. **Is each ask easy to find?** It sits in the first three sentences
+   of its paragraph, and the main call to action sits near the end of
+   the message (Rule 9).
 2. **Is the ask a question?** If it is a statement of desire, rewrite
    it.
 3. **Every hedge through Rule 2.** Epistemic and cost-of-no stay;
    status-lowering goes.
 4. **Any apology?** Did the thing apologised for cost the recipient
    something? If not, cut it. Regret for a shared miss stays (Rule 12).
-5. **Contractions present?**
+5. **Contractions present**, unless the register says otherwise?
 6. **Could the recipient act without re-reading**, and without
    remembering a conversation the draft doesn't name?
 7. **Are the edges warm?** If the whole thing reads clipped, the
@@ -196,7 +197,7 @@ problem, and I won't write again.").
     substantive paragraph (Rule 9)?
 11. **Warmth.** Edges warm, names not descriptions, and no more (Rule
     10).
-12. **Dash check.** No em-dashes.
+12. **Dash check.** No dashes.
 13. **Opener.** After a meeting, does the first line lead with the
     meeting (Rule 11)?
 14. **Favour-tier ask.** "Would you like", with no stated length (Rule

@@ -47,9 +47,22 @@ editing, not for passing as them.
   sections about 28–32; introductions about 13; abstracts about 35;
   background 8–14. Density comes from selection, not accumulation: an
   example must carry a claim.
-- **Every specific is anchored.** A number, name, date, origin story, or
-  model identity that can't be traced to the project's record is marked
-  `[unverified]` in the draft, never stated smoothly.
+- **Every specific is anchored.** A number, name, date, quotation, view
+  attributed to a named scholar, origin story, or model identity that
+  can't be traced to the project's record is marked `[unverified]` in the
+  draft, never stated smoothly. Check the pairing as well as the parts: a
+  real scholar with a plausible quotation that is not theirs passes a
+  check of either alone.
+- **Make each claim belong to this study.** A sentence that would stand
+  unchanged in a paper on another site, period, or archive carries no
+  information here. Tie it to this case with a name, a number, a date,
+  or a source, or cut it. "Settlement patterns reflect a complex
+  interplay of environmental and social factors" fits any survey;
+  "Farmsteads cluster within 500 m of the spring line, while the later
+  towers do not" fits only this one.
+- **Every sentence adds information.** Cut a sentence that restates the
+  last, announces the next, asserts importance without content, or
+  brings in background the paragraph's claim does not use.
 
 ## Voice and stance
 
@@ -71,13 +84,35 @@ editing, not for passing as them.
 - **Plain, data-forward, argued.** Put explicit logical connectives at
   sentence heads where the logic would otherwise be implicit ("Since…",
   "In response…", "Finally…"). A sequence of assertions reads as a
-  draft; an argued sequence survives editing.
+  draft; an argued sequence survives editing. A connective names a
+  relation (cause, concession, sequence, or contrast); additive openers
+  such as "Moreover" and "Furthermore" name none (see `anti-tic.md`).
+- **Write directly.** Prefer a strong verb and a concrete noun to a
+  roundabout phrase: "if", not "in the event of"; "except", not "with
+  the exception of"; "to fund", not "for the purpose of funding";
+  "knows", not "is aware of"; "indicate", not "are indications of". Turn
+  nominalisations back into verbs ("tends to procrastinate", not "has a
+  propensity towards procrastination"). Directness is not monotony: vary
+  openings, length, and structure, so that a run of plain subject–verb
+  sentences does not become a tic of its own.
+- **Coin sparingly.** Introduce a coined term only if you will use it
+  again, define it at first use, and don't stack abstract compounds.
+  When in doubt, say it in plain words.
+- **Say what the evidence shows, as the author's reading.** Where the
+  evidence supports a judgement, state it and hedge it to its warrant,
+  rather than listing positions and leaving the reader to choose. "Some
+  scholars see the deposit as votive, others as a hoard" reports; "The
+  deposit is more likely votive, since the coins were pierced before
+  burial" argues. If the author's position is not in the notes, leave a
+  marked gap (`[author's reading?]`), never a neutral survey.
 
 ## Sentences and paragraphs
 
 - **Mean sentence length about 21–24 words.** Drafts run to 30 or more;
-  split long chains. Never three consecutive sentences of five words or
-  fewer.
+  split long chains. Vary length: an occasional sentence ten or more
+  words either side of the mean is welcome; a run of them is not.
+- **Short sentences are an occasional beat, not a rhythm.** Two of five
+  words or fewer may stand together; never three.
 - **Subordinators carry the connected register**: "while", "although",
   "despite". "However" sits mid-sentence, set off by commas, and opens a
   sentence only for a real paragraph-level turn.
@@ -86,8 +121,12 @@ editing, not for passing as them.
   claims.
 - **Passive voice is fine in methods.** Interpretive and claim-making
   prose stays active. No agentless "It was found that…".
-- **Topic sentence first**, so that a skim of first sentences recovers
-  the argument.
+- **Topic sentence first** in most paragraphs, so that a skim of first
+  sentences recovers the argument.
+- **Weight the argument.** Give the main claim more room than the
+  supporting points, and let paragraph length follow importance. Evenly
+  weighted paragraphs make everything sound equally important; some
+  lumpiness is the point.
 - **Anchor demonstratives**: "This evidence suggests", never a bare
   "This suggests". Keep "there are" and "it is" openers rare.
 
@@ -102,11 +141,13 @@ editing, not for passing as them.
 - **Colons: sparing**, for a list or a definition only. No "X: Y" as a
   rhetorical move, and no colon-appended interpretive tags ("…: the
   reason X matters").
-- **Parentheses are the main interruption device**, carrying
-  definitions, qualifications, and data, not asides. Define an acronym
-  in parentheses at first use, then use the short form.
-- **Digits for numbers** ("92", not "ninety-two") unless the venue says
-  otherwise.
+- **Parentheses carry definitions and data** (an acronym at first use,
+  a count, a date), not caveats. A qualification that matters gets its
+  own clause or sentence; one that doesn't is cut. Define an acronym in
+  parentheses at first use, then use the short form.
+- **Numbers:** spell out one to nine and use digits from 10; always
+  digits with a unit of measurement ("9 cm") and in tables. The venue's
+  style overrides.
 
 ## Anti-flourish
 
@@ -117,7 +158,8 @@ parallelism; identity claims where the evidence shows similarity
 ("similar patterns", not "the same class"); and sentences about the
 manuscript rather than the world ("A single case stands for the
 class.", "The diagnosis is now visible.", trailing segues to the next
-section, self-justifying appositions). A leading roadmap at a section
+section, self-justifying appositions), including commentary on how the
+text was produced. A leading roadmap at a section
 head is fine; backward and sideways narration is not. The companion
 file `anti-tic.md` holds the full set of these rules.
 
@@ -128,13 +170,16 @@ drafting or editing, never add, remove, or restyle citations; leave
 their placement and format to the author. "E.g." and "i.e." are
 ordinary register.
 
-## Known generation biases
+## Check these first
 
-Against the targets above, model drafts systematically: over-produce
-"we" (about 1.3 times the corpus rate); over-concede (about twice);
-over-lengthen sentences (means of 30 or more against 21–24); over-write
-framing prose and under-develop evidence prose; perform voice; and state
-unanchored specifics smoothly. Draft against these drifts.
+Against the targets above, model drafts have been measured to
+over-produce "we" (about 1.3 times the corpus rate); over-concede (about
+twice); over-lengthen sentences (means of 30 or more against 21–24);
+over-write framing prose and under-develop evidence prose; perform
+voice; and state unanchored specifics smoothly. After drafting, check
+these first, and correct a drift only where the count shows one. A model
+checking its own draft tends to under-flag, so the author's read, or a
+fresh reviewer's, is the real check.
 
 ## Quantitative gate
 
@@ -147,8 +192,8 @@ source corpus's measurements; replace them with your own.
 | Em-dashes per 1,000 words | ≤ 0.20 | hard ceiling |
 | Semicolons per 1,000 words | ≤ 3.4 | draft low |
 | Announcement colons per 1,000 words | ≤ 1.6 | sparing |
-| Mean sentence length (words) | 21–24 | ±10 |
-| Consecutive sentences of five words or fewer | 0 | 0 |
+| Mean sentence length (words) | 21–24 | ±3 |
+| Runs of three or more sentences of five words or fewer | 0 | 0 |
 | Boosters per 100 words | 0 | 0 |
 | Hedges per 100 words | 0.72 | ±0.1 |
 | Concession rate (share of sentences) | 0.13 | ±0.05 |

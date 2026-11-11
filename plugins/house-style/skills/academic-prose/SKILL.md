@@ -151,6 +151,8 @@ grep -o ':' FILE | wc -l
 grep -n -iE '\b(clearly|obviously|certainly|definitely|undoubtedly)\b' FILE
 # "The authors", "it is important to note", and "whilst" (a register may allow it)
 grep -n -iE '\bwhilst\b|the authors\b|important to note' FILE
+# Stock additive openers ("Moreover", "Furthermore", "Additionally", "In addition")
+grep -n -E '(^|[.!?][[:space:]]+)(Moreover|Furthermore|Additionally|In addition)\b' FILE
 # Three consecutive short sentences (crude): eyeball any cluster
 grep -nE '(\b\w+\b[[:space:]]+){0,4}\w+[.!?][[:space:]]+(\b\w+\b[[:space:]]+){0,4}\w+[.!?][[:space:]]+(\b\w+\b[[:space:]]+){0,4}\w+[.!?]' FILE
 wc -w FILE
@@ -177,6 +179,7 @@ automatic fail, but an unreported count is a skipped check.
 - [ ] Every load-bearing point skeleton-complete (3/3 legs)
 - [ ] Section anchor density checked against the register's targets
 - [ ] All specifics anchored or explicitly `[unverified]`
+- [ ] Every in-text pointer to a section, table, or figure names one that exists
 - [ ] Countable exit checks run and counts reported
 - [ ] Other places in the project that need the same change (a fact, a name, a
       threshold) listed for the author
