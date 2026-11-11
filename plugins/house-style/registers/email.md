@@ -84,8 +84,6 @@ Kept deliberately coarse.
   personal register records. Without one, use "Hi Name," for a
   colleague, "Dear Name," for a first contact or a favour, and the
   sender's first name to sign.
-- **Parentheses carry information**, not caveats or doubt about the
-  sender.
 
 ## Rule 4: concise is the default, not an instruction
 
