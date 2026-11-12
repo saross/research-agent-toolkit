@@ -193,9 +193,17 @@ user's acceptance.
 After the reflection documents, append an entry for each thing worth
 carrying forward from how the user worked this session: a working-style
 choice, a productive push-back, a self-critique of your own part, or a
-win or pitfall of how you work together, seen from your side. Most
-sessions yield at least one; when there is nothing worth recording, say
-so in the closing message instead of writing a thin entry.
+win or pitfall of how you work together, seen from your side. Each entry
+rests on evidence from this session, which it names: something said,
+done, or produced in it. Zero new entries is an acceptable outcome: when
+the session gave nothing worth carrying forward, write none, and say so
+in the closing message instead of writing a thin entry.
+
+An entry that measures the session's work against the user's standing
+instructions (their `CLAUDE.md`) cites the instruction by its rule (for
+example "the user's rule that functions carry docstrings"), not by
+quoting its private wording, since this file may be committed in a
+public repository.
 
 **Duplicate guard.** Check for entries already dated today first; if
 this session's observations are there, add only what is genuinely new.
