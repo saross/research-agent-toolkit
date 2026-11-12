@@ -212,7 +212,8 @@ where reviews are written (`calibration-*.md`). Consider only records for
 the current panel script (its SHA-256, `sha256sum
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs`, since the stance
 preambles and the calibration lens live there) and the model requested.
-Calibration holds only if the most recent of those is a **pass**. A
+Calibration holds only if the most recent of those is a **pass** of
+both halves of the test below. A
 later failure, no such record, or an order that can't be told leaves it
 unresolved; records for another script or model count neither way. So,
 for the same script and model, a pass then a later fail is unresolved
@@ -223,16 +224,23 @@ cost gate; never start it just because a record is missing. If the
 author declines, label every adversarial finding about hedging in the
 report as uncalibrated.
 
-The test: an adversarial run over a known-good, peer-reviewed,
-deliberately hedged section that the author nominates. **Pass:** no
-finding treats a calibrated hedge as a weakness, and any finding about a
-hedge shows real mis-calibration with evidence. Count every finding the
-panel returns, including any the meta-reviewer rates unsound: the test is
-of the guard, not of the meta-reviewer. **Fail:** say that the plugin's
-guard needs fixing, and treat hedging findings as uncalibrated until a
-later version passes. **A section used to diagnose or fix the guard
-can't confirm the fix:** a pass on it counts only once the same script
-and model also pass on a second section that played no part in the fix.
+The test is a pair of adversarial runs over sections the author
+nominates, because a guard that suppresses everything would pass a test
+of protection alone. **Protection:** a known-good, peer-reviewed,
+deliberately hedged section. It passes if no finding treats a calibrated
+hedge as a weakness, and any finding about a hedge shows real
+mis-calibration with evidence. Count every finding the panel returns,
+including any the meta-reviewer rates unsound: the test is of the guard,
+not of the meta-reviewer. **Sensitivity:** a cautious section with a
+documented substantive defect (one a referee raised, for example) whose
+limitation the text openly acknowledges. It passes if at least one
+finding identifies that defect and the meta-reviewer does not dismiss it
+on hedging or acknowledgement grounds. **Fail (either half):** say that
+the plugin's guard needs fixing, and treat hedging findings as
+uncalibrated until a later version passes both. **A section used to
+diagnose or fix the guard can't confirm the fix:** a pass on it counts
+only once the same script and model also pass on a section that played
+no part in the fix.
 Record which sections a test used, and whether each was held out.
 Record each test in a file of its own,
 separate from any review report, `calibration-<YYYY-MM-DD>-<run ID>.md`,
