@@ -144,13 +144,11 @@ For the session reflection (priority 1), choose two or three prompts
 from this pool, by relevance to the session. Don't use them all, and
 don't impose a fixed structure: let the prompts guide free reflection.
 
-**Rotation guard.** Choices tend to collapse onto a favourite few (in the
-two largest projects that used this skill, "what surprised you" appeared
-in nearly every entry, while "what felt uncertain or unresolved" was used
-once in about ninety entries). Before choosing,
-glance at the previous two entries: if a prompt appears in both, prefer
-one that appears in neither. Relevance still wins, but between two
-equally apt prompts, take the one the document has heard from least.
+**Rotation guard.** Over many entries the document should hear from the
+whole pool, not a favourite few. Before choosing, glance at the previous
+two entries: if a prompt appears in both, prefer one that appears in
+neither. Relevance still wins, but between two equally apt prompts, take
+the one the document has heard from least.
 
 **Core pool** (use at least one):
 
@@ -170,8 +168,10 @@ equally apt prompts, take the one the document has heard from least.
 - What is the single most important thing a future reader should know
   about this session?
 
-**Avoid** enumerated lists of "what each party brought". If both
-contributions matter, weave them into the narrative.
+When both parties' contributions matter, weave them into the narrative
+of how the session went. A ledger of what each party brought loses the
+session's texture, which is what the reflection exists to record (see
+**Why this exists** above).
 
 ## Claude observations (after the reflection documents)
 
@@ -188,14 +188,14 @@ folder**, so it is outside the priority loop above.
 and ask whether to keep one; if the user agrees, create it from this
 skill's template (`templates/claude-observations.md`). Once it exists,
 you write it directly: entries are kept by default, not waiting on the
-user's acceptance. Be liberal; empty is not the expected outcome.
+user's acceptance.
 
-After the reflection documents, append one to four entries:
-
-- what you observed about how the user worked this session: a
-  working-style choice worth carrying forward, a productive push-back, a
-  self-critique of your own part, or a win or pitfall of how you work
-  together, seen from your side.
+After the reflection documents, append an entry for each thing worth
+carrying forward from how the user worked this session: a working-style
+choice, a productive push-back, a self-critique of your own part, or a
+win or pitfall of how you work together, seen from your side. Most
+sessions yield at least one; when there is nothing worth recording, say
+so in the closing message instead of writing a thin entry.
 
 **Duplicate guard.** Check for entries already dated today first; if
 this session's observations are there, add only what is genuinely new.
