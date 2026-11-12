@@ -65,9 +65,9 @@ def test_every_option_is_used_and_optional(plugin: Path) -> None:
         assert not spec.get("required"), f"{key} must stay optional"
 
 
-def test_verification_agents_declares_its_three_commands() -> None:
+def test_proposer_verifier_declares_its_three_commands() -> None:
     """The options exist under the names the documentation gives."""
-    declared = _declared(PLUGINS / "verification-agents")
+    declared = _declared(PLUGINS / "proposer-verifier")
     assert set(declared) == {
         "library_check_command", "library_import_command", "verification_log_command",
     }

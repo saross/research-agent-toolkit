@@ -71,7 +71,7 @@ For `N` in 0..5:
 
 #### Step A — Invoke the proposer
 
-- **Iteration 0 (first-run mode):** start the `verification-agents:data-profile-proposer` agent with
+- **Iteration 0 (first-run mode):** start the `proposer-verifier:data-profile-proposer` agent with
   the Agent tool with the config parameters, setting `output_dir = ${ITERATE_ROOT}/iter-0/`. No
   `previous_corrections_path` is passed.
 - **Iterations 1..5 (iterate mode):** invoke with the same config
@@ -85,7 +85,7 @@ For `N` in 0..5:
 
 #### Step B — Invoke the verifier
 
-Start the `verification-agents:data-profile-verifier` agent with the Agent tool, with:
+Start the `proposer-verifier:data-profile-verifier` agent with the Agent tool, with:
 
 - `profile_report_dir = ${ITERATE_ROOT}/iter-{N}/`
 - `dataset_path` = same as config
@@ -297,8 +297,8 @@ Config file shape (example):
 | Failure | Symptom | Recovery |
 | --- | --- | --- |
 | Proposer errors at iter 0 | Agent returns error, no draft | Run the command again after fixing the configuration; nothing has been persisted that could conflict. |
-| Proposer errors at iter N>0 | Iterate mode failure | Start `verification-agents:data-profile-proposer` by hand with `previous_corrections_path = ${ITERATE_ROOT}/iter-{N-1}/corrections.jsonl` to reproduce; debug from there. |
-| Verifier errors | Step B returns error | The iter-{N}/ output remains. Start `verification-agents:data-profile-verifier` against it by hand. |
+| Proposer errors at iter N>0 | Iterate mode failure | Start `proposer-verifier:data-profile-proposer` by hand with `previous_corrections_path = ${ITERATE_ROOT}/iter-{N-1}/corrections.jsonl` to reproduce; debug from there. |
+| Verifier errors | Step B returns error | The iter-{N}/ output remains. Start `proposer-verifier:data-profile-verifier` against it by hand. |
 | Cap reached | Status CAP_REACHED | Inspect the final FAIL claims and their fix_hints; the methodology may need adjustment by the human before the loop can converge. |
 | Stall | Status NO_PROGRESS | Same as cap-reached, but earlier — same hints, same outcome. Manual intervention required. |
 | Out of band cancellation | User aborts mid-iteration | The current iter directory may be incomplete; future runs should use a new ITERATE_ROOT. |

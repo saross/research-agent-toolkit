@@ -97,7 +97,7 @@ For `N` from 0 to 5:
 
 #### Step A: start the proposer
 
-- **Iteration 0 (first run):** start the `verification-agents:lit-scout`
+- **Iteration 0 (first run):** start the `proposer-verifier:lit-scout`
   agent with the Agent tool, with the user's query as the prompt. Pass the
   query through as received, without paraphrasing or enriching it. It
   typically takes 10 to 15 minutes.
@@ -146,7 +146,7 @@ doesn't iterate when that placeholder appears in `corrections.jsonl`.
 
 #### Step D: start the verifier
 
-Start the `verification-agents:lit-scout-verifier` agent with the Agent
+Start the `proposer-verifier:lit-scout-verifier` agent with the Agent
 tool, with the prompt:
 
 ```text

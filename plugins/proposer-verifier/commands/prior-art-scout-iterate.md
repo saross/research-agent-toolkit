@@ -76,7 +76,7 @@ For `N` in 0..5:
 
 #### Step A — Invoke the proposer
 
-- **Iteration 0:** start the `verification-agents:prior-art-scout` agent with the Agent tool
+- **Iteration 0:** start the `proposer-verifier:prior-art-scout` agent with the Agent tool
   with the user's brief verbatim. Run in foreground.
 - **Iterations 1..5 (iterate mode):** prompt:
 
@@ -113,7 +113,7 @@ status `LEGACY_PROPOSER`.
 
 #### Step D — Invoke the verifier
 
-Start the `verification-agents:prior-art-scout-verifier` agent with the Agent tool, with the prompt:
+Start the `proposer-verifier:prior-art-scout-verifier` agent with the Agent tool, with the prompt:
 
 ```text
 Verify this prior-art-scout draft for confabulation per the
@@ -316,8 +316,8 @@ MIT, Apache-2.0, BSD, CC-BY 4.0.
 | Failure | Symptom | Recovery |
 | --- | --- | --- |
 | Proposer errors at iter 0 | Agent returns error, no draft | Re-run; nothing persisted. |
-| Proposer errors at iter N>0 | Iterate mode failure | iter-{N-1}/ outputs preserved. Start `verification-agents:prior-art-scout` again by hand, with the iter-mode parameters. |
-| Verifier errors | Step D returns error or malformed | iter-{N}/draft.md preserved. Start `verification-agents:prior-art-scout-verifier` against it by hand. |
+| Proposer errors at iter N>0 | Iterate mode failure | iter-{N-1}/ outputs preserved. Start `proposer-verifier:prior-art-scout` again by hand, with the iter-mode parameters. |
+| Verifier errors | Step D returns error or malformed | iter-{N}/draft.md preserved. Start `proposer-verifier:prior-art-scout-verifier` against it by hand. |
 | Corrections block missing | Step F extraction yields empty file | Treat as verifier failure. Do not iterate. |
 | Cap reached | Status CAP_REACHED | Inspect surviving FAIL claims; methodology adjustment may be required. |
 | Stall | Status NO_PROGRESS | Same as cap-reached but earlier. Often an ambiguous fix_hint or source-API inconsistency. |
@@ -348,7 +348,7 @@ MIT, Apache-2.0, BSD, CC-BY 4.0.
 - Do NOT nest sub-agents. Serial dispatch from main conversation
   is the only realisable path.
 - For one-shot (non-iterating) prior-art work, invoke
-  the `verification-agents:prior-art-scout` agent directly with the Agent
+  the `proposer-verifier:prior-art-scout` agent directly with the Agent
   tool. Use this command when the cost of an unfixable
   confabulation in the candidates table is higher than the cost
   of an extra 1–3 iterations (e.g., when the brief drives a real

@@ -33,7 +33,7 @@ inside the agents.
 
 ### Step 1: start the proposer
 
-Start the `verification-agents:lit-scout` agent with the Agent tool, with
+Start the `proposer-verifier:lit-scout` agent with the Agent tool, with
 the user's query as the prompt. Run it in the foreground, because
 verification can't start until it returns. It typically takes 10 to 15
 minutes.
@@ -57,7 +57,7 @@ resume with the `lit-scout-verify` command.
 
 ### Step 3: start the verifier
 
-Start the `verification-agents:lit-scout-verifier` agent with the Agent
+Start the `proposer-verifier:lit-scout-verifier` agent with the Agent
 tool. The prompt is **only**:
 
 ```text

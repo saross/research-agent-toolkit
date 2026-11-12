@@ -33,7 +33,7 @@ don't start the verifier.
 
 ### Step 2: start the verifier
 
-Start the `verification-agents:lit-scout-verifier` agent with the Agent
+Start the `proposer-verifier:lit-scout-verifier` agent with the Agent
 tool, with the draft as input. The prompt is the same as in the main
 command's Step 3:
 

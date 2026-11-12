@@ -8,8 +8,8 @@
   },
   "plugins": [
     {
-      "name": "verification-agents",
-      "source": "./plugins/verification-agents",
+      "name": "proposer-verifier",
+      "source": "./plugins/proposer-verifier",
       "description": "Proposer and verifier agent pairs: literature scouting, prior-art discovery, and dataset profiling.",
       "category": "research"
     },

@@ -15,7 +15,7 @@ rewritten for release so that they run without the author's private set-up. Expe
 
 | Part | What it does |
 | --- | --- |
-| [`plugins/verification-agents`](plugins/verification-agents) | Proposer and verifier agent pairs: literature scouting with citation chaining, prior-art discovery, and dataset profiling. A second agent, in a fresh context, re-checks the first one's factual claims against authoritative sources: each row of a findings table (authors, title, DOI, citations; repositories and packages), and each key figure of a data profile. The literature scout's narrative synthesis is not verified |
+| [`plugins/proposer-verifier`](plugins/proposer-verifier) | Proposer and verifier agent pairs: literature scouting with citation chaining, prior-art discovery, and dataset profiling. A second agent, in a fresh context, re-checks the first one's factual claims against authoritative sources: each row of a findings table (authors, title, DOI, citations; repositories and packages), and each key figure of a data profile. The literature scout's narrative synthesis is not verified |
 | [`plugins/research-gates`](plugins/research-gates) | Checkpoints: statistical power before scaling up (`phase-gate`), configuration audits before paid runs (`audit-config`), reviews of unattended pipelines (`pre-run-review`), implementation reviews (`review-implementation`), and two-lens code audits (`code-audit`) |
 | [`plugins/prompt-hardening`](plugins/prompt-hardening) | `improve-prompt`: strengthens a prompt against the model stopping at good enough |
 | [`plugins/house-style`](plugins/house-style) | Drafting discipline that loads your own register before any prose is touched: academic prose (`academic-prose`) and email (`draft-email`, which drafts, and sends only the exact text you have approved). And `review-paper`, a panel of fresh-context reviewers for LaTeX paper drafts, constructive or adversarial, whose verdict is computed from the severity of the findings and never taken from any reviewer's opinion |
@@ -31,7 +31,7 @@ In Claude Code, add this repository as a plugin marketplace, then install the pl
 
 ```text
 /plugin marketplace add saross/research-agent-toolkit
-/plugin install verification-agents@research-agent-toolkit
+/plugin install proposer-verifier@research-agent-toolkit
 /plugin install research-gates@research-agent-toolkit
 /plugin install prompt-hardening@research-agent-toolkit
 /plugin install house-style@research-agent-toolkit
@@ -40,11 +40,15 @@ In Claude Code, add this repository as a plugin marketplace, then install the pl
 ```
 
 Plugin commands, skills, and agents are namespaced, so the literature scout runs as
-`/verification-agents:lit-scout`, and the paper review as `/house-style:review-paper`.
+`/proposer-verifier:lit-scout`, and the paper review as `/house-style:review-paper`.
+
+`proposer-verifier` was called `verification-agents` up to version 0.3.1. To move, uninstall
+`verification-agents@research-agent-toolkit`, install `proposer-verifier@research-agent-toolkit`,
+and set again any of its three options you had set: they are stored under the plugin's id.
 
 **Requirements:**
 
-- The verification agents' helper scripts need [`uv`](https://docs.astral.sh/uv/), which installs
+- The `proposer-verifier` helper scripts need [`uv`](https://docs.astral.sh/uv/), which installs
   their Python dependencies on first use.
 - The prior-art scout works best with the GitHub CLI, `gh`, signed in.
 - Optionally, set `LIT_SCOUT_MAILTO` to your own email address. Scholarly APIs give identified
@@ -133,17 +137,17 @@ your own, and give its path.
 Set the options when you install, or later:
 
 ```bash
-claude plugin install verification-agents@research-agent-toolkit \
+claude plugin install proposer-verifier@research-agent-toolkit \
   --config library_check_command="python3 $HOME/bin/zotero-library-check.py"
-claude plugin configure verification-agents@research-agent-toolkit
+claude plugin configure proposer-verifier@research-agent-toolkit
 ```
 
-Inside Claude Code, `/plugin configure verification-agents` opens the same options. Use full
+Inside Claude Code, `/plugin configure proposer-verifier` opens the same options. Use full
 paths, and keep API keys out of the option values: they are stored in your `settings.json` and
 shown to the model. A script that needs a key should read it from its own environment or file.
 
 **An example for Zotero.**
-[`plugins/verification-agents/examples/zotero-library-check.py`](plugins/verification-agents/examples/zotero-library-check.py)
+[`plugins/proposer-verifier/examples/zotero-library-check.py`](plugins/proposer-verifier/examples/zotero-library-check.py)
 is a working check command for a Zotero library on the same computer. It reads the DOI field of
 every item in your local Zotero database, in all your libraries, never changes your library,
 and needs only Python. Copy it somewhere of your own, read it, and set `library_check_command` to
@@ -172,7 +176,7 @@ earning its cost in your own work. A failure of this command never changes a run
 
 The dataset profiler can run its Python on another machine over SSH, with git carrying the
 script there and the results back. Give `remote_exec: {host, workdir, venv_python}` in the
-configuration you pass to `/verification-agents:data-profile-iterate`. The repository must
+configuration you pass to `/proposer-verifier:data-profile-iterate`. The repository must
 already be cloned on that machine. The exchange makes two commits on your current branch and
 pushes them: the profile script, and the output files the script lists. A script in the plugin
 (`scripts/remote_run.py`) does it as one checked step. It refuses to start unless both clones
