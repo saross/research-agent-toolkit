@@ -149,7 +149,9 @@ over-produce "we" (about 1.3 times the corpus rate); over-concede (about
 twice); over-lengthen sentences (means of 30 or more against 21–24);
 over-write framing prose and under-develop evidence prose; perform
 voice; and state unanchored specifics smoothly. After drafting, check
-these first, and correct a drift only where the count shows one. A model
+these first. Use counts to check measurable drift, and source checks and
+judgement for the other faults; a clean count does not excuse an
+unanchored specific. A model
 checking its own draft tends to under-flag, so the author's read, or a
 fresh reviewer's, is the real check.
 

@@ -212,8 +212,9 @@ where reviews are written (`calibration-*.md`). Consider only records for
 the current panel script (its SHA-256, `sha256sum
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs`, since the stance
 preambles and the calibration lens live there) and the model requested.
-Calibration holds only if two records are a **pass** of both halves of
-the test below: the newest applicable record overall, and the newest
+Calibration holds only if two selections are each a **pass** of both
+halves of the test below (they may select the same record): the newest
+applicable record overall, and the newest
 applicable record of a held-out test (one whose sections played no part
 in diagnosing or fixing the guard). A diagnostic pass can't stand in for
 a missing, failed, or ambiguously ordered held-out result. No such
@@ -236,9 +237,11 @@ mis-calibration with evidence. Count every finding the panel returns,
 including any the meta-reviewer rates unsound: the test is of the guard,
 not of the meta-reviewer. **Sensitivity:** a cautious section with a
 documented substantive defect (one a referee raised, for example) whose
-limitation the text openly acknowledges. It passes if at least one
-finding identifies that defect and the meta-reviewer does not dismiss it
-on hedging or acknowledgement grounds. **Fail (either half):** say that
+limitation the text openly acknowledges. It passes only if at least one
+finding correctly identifies the documented defect, cites valid evidence
+for it, and is retained as sound by the meta-reviewer; merely naming the
+defect, or a finding rejected on any ground, is not a pass. Fix the
+defect and the pass criteria before the run. **Fail (either half):** say that
 the plugin's guard needs fixing, and treat hedging findings as
 uncalibrated until a later version passes both. A section used to
 diagnose or fix the guard can't confirm the fix (see the selection rule

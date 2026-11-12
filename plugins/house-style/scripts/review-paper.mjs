@@ -298,7 +298,11 @@ weaker than the claim as worded: a quotation from the target, a cited source, th
 notes or other read-only context, or the paper brief, showing that the evidence for this claim
 does not support its strength. A hedge elsewhere in the text, an argument from consistency of
 tone, a general preference for caution, or the claim's directness alone is not such evidence;
-without it, there is no finding.
+without it, there is no finding. This condition applies only to objections about uncertainty
+wording. A substantive evidence gap remains reportable even when narrowing the claim is one remedy:
+anchor the claim, identify the support it needs, and state what is absent from the named
+artefacts. Source material that isn't available makes the point unverifiable; it is not proof of
+absence.
 The guard does NOT protect a substantive defect because the text acknowledges it: an unsupported
 inference, a wrong citation or fact, a missing evidential basis, a methodological defect, or an
 unmet binding requirement is still a finding when the limitation is openly stated (an honest "we

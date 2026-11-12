@@ -634,3 +634,17 @@ class TestMoreHedgingNeedsWeakerEvidence:
         assert ("If the hedge is calibrated, if such a request cites no weaker evidence, or if "
                 "the text already meets the finding's retraction condition, the finding is not "
                 "sound: classify it semantic-drift") in branch
+
+
+class TestEvidenceGapsStayReportable:
+    """Review note on fix B (GPT in Codex, lane astra, 12 Nov 2026): the evidence requirement
+    covers objections about uncertainty wording only; a substantive evidence gap stays
+    reportable even when narrowing the claim is one remedy."""
+
+    def test_every_prompt_keeps_evidence_gaps_reportable(self, tmp_path: Path) -> None:
+        report = run(tmp_path, base_args(stance="adversarial"))
+        for call in report["calls"]:
+            prompt = " ".join(call["prompt"].split())
+            assert "applies only to objections about uncertainty wording" in prompt, call["label"]
+            assert "A substantive evidence gap remains reportable" in prompt, call["label"]
+            assert "it is not proof of absence" in prompt, call["label"]
