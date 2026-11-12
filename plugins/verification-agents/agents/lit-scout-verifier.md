@@ -65,13 +65,26 @@ them; the command expects you to keep them.
 
 ## Verification method
 
-For every row in the Findings table:
+For every row in the Findings table, ask two questions of its DOI: is it
+the right target, and does it resolve. Both calls can go in one Bash
+command:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/lit-search" metadata "DOI"
+"${CLAUDE_PLUGIN_ROOT}/scripts/lit-search" doi-exists "DOI"
 ```
 
-Parse the JSON response, and extract:
+`metadata` gives the record you check the row against. It asks
+CrossRef, Semantic Scholar, and OpenAlex, and when none of the three
+holds the DOI (a deposit made this week, say), it reads the record of
+the agency that registered the DOI (DataCite, mEDRA, JaLC, and others)
+through doi.org. Such a record has
+`"source": "doi.org (registration agency)"`. It is the registration
+itself, as good as an index's copy for the authors, year, and title, but
+it carries no citation count.
+`doi-exists` says whether the DOI resolves (see the table below).
+
+Parse the `metadata` JSON, and extract:
 
 - the `authors` array: the full ordered list of family names, and the
   total author count, not only the first element;
@@ -108,7 +121,10 @@ Compare them with the row's claims. A claim **passes** if:
 - **Title:** matches approximately; minor formatting and capitalisation
   differences are fine.
 - **Cites:** within 10% of the API's value, or within 20 of it for small
-  counts. Citation counts drift slightly between sources.
+  counts. Citation counts drift slightly between sources. Where the only
+  record is the registering agency's, and no other source gives a count,
+  the Cites claim is `unverifiable` ("no source holds a citation count"),
+  never FAIL.
 
 A claim **fails** if any field mismatches, and a row fails if any of its
 claims fails.
@@ -131,6 +147,12 @@ Two different things can stop a check, and they must not share a verdict.
   empty in a way that suggests throttling rather than absence, or
   `doi-exists` returning `"state": "unverifiable"`. Mark the claim
   **`unverifiable`**.
+- **The DOI is registered but doesn't resolve:** `doi-exists` returns
+  `"state": "registered_no_url"`. The DOI is real, but its registration
+  holds no URL to send a reader to. That is not a fabrication, so it is
+  never a FAIL; nor does it pass, since the claim is that the DOI
+  resolves. Mark the `doi_resolves` claim **`unverifiable`**, give that
+  reason, keep the row, and flag it.
 
 **`unverifiable` describes the check, not the candidate.** It means "I
 didn't find out", never "this paper doesn't exist". A row you couldn't
@@ -145,12 +167,15 @@ in the helper's source records this). Where a successful-looking response
 carries an implausibly empty payload, that is `unverifiable`, not an
 authoritative zero.
 
-**`lit-search` can't yet tell you which case you are in.** Every exhausted
+**`metadata` can't tell you which case you are in.** Every exhausted
 retry returns nothing, so the caller sees the same result for a 404 as for
 a 429, and `metadata` reports both as
-`{"error": "No metadata found for DOI: ..."}`. This is a known limitation.
-Until `metadata` is fixed, **treat "No metadata found" as undetermined**, and ask the
-DOI resolver, which answers for every registry:
+`{"error": "No metadata found for DOI: ..."}`. Since its last source is
+now the registering agency's own record, that message means that neither
+the three indexes nor the agency gave a record, which a rate limit
+produces as readily as a DOI that doesn't exist. **Treat "No metadata
+found" as undetermined**; `doi-exists` decides, because the DOI resolver
+answers for every registry:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/lit-search" doi-exists "DOI"
@@ -158,25 +183,32 @@ DOI resolver, which answers for every registry:
 
 Pass the proposer's `doi` field unchanged; the helper encodes it, so a
 suffix holding `#` or `?` reaches the resolver whole, and it accepts an
-answer only if the resolver's echo names the same DOI. Its `state`:
+answer only if the resolver's echo names the same DOI. It asks the
+resolver for the DOI's URL, since a DOI resolves only if its registration
+holds one. Its `state`:
 
 | `state` | What the resolver said | `doi_resolves` |
 | --- | --- | --- |
-| `exists` | It holds this DOI | Not a FAIL. Existence isn't identity: the claim passes only if a record you have read (from `metadata` or the arXiv API) is the expected paper; otherwise `unverifiable` |
-| `exists_no_values` | The DOI exists, but no values came back | As for `exists` |
+| `resolves` | It holds this DOI, with a URL to send a reader to (given as `url`) | Not a FAIL. Resolving isn't identity: the claim passes only if a record you have read is the expected paper, from `lit-search metadata` (whose last source is the registering agency's own record), the arXiv API, or the registering agency's own record; otherwise `unverifiable` |
+| `registered_no_url` | The DOI is registered, but holds no URL, so it doesn't resolve | Not a FAIL, and not a pass, whatever a record says: `unverifiable`, with the reason "registered, but has no URL to resolve to". Keep the row, and flag it in the Unverifiable rows table as a real DOI with a broken registration, not a fabrication |
 | `not_found` | This exact DOI doesn't exist | `fail` |
 | `unverifiable` | No answer, a rate limit, a server error, a body that wasn't its JSON, or an answer about another identifier | `unverifiable` |
 
+Only `not_found`, or a record at the DOI that is a different paper,
+supports a `doi_resolves` FAIL.
+
 Don't ask doi.org with a hand-written `curl`: a raw DOI in a URL loses
 everything after a `#` or `?`, and a bare status code can't show which
-identifier it was about.
+identifier it was about. `lit-search metadata` reads the registering
+agency's record for you when no index holds the DOI.
 
 ### arXiv rows (DOIs of the form 10.48550/arXiv.\<id\>)
 
 These are DOIs registered with DataCite, and can be verified like any
 other. `lit-search metadata` asks CrossRef, Semantic Scholar, and
 OpenAlex in turn; CrossRef doesn't hold DataCite DOIs, so for an arXiv
-DOI the record comes from the other two. If that call is thin or fails,
+DOI the record comes from the other two, or, when neither holds it yet,
+from DataCite's own record through doi.org. If that call is thin or fails,
 query the arXiv API
 directly, which is authoritative for the title, author list, and dates:
 `curl -s 'http://export.arxiv.org/api/query?id_list=<id>'`. Do NOT mark an
@@ -203,7 +235,7 @@ for each claim, and the PARTIAL band sits between PASS and FAIL:
 | `year` | Exact match | Within one year (CrossRef sometimes gives the publication date and sometimes the first-online date) | More than one year out |
 | `title` | Approximate match (capitalisation, punctuation, and a leading "The" may vary) | The same paper, with markedly different wording, such as a subtitle present in one and absent in the other | A different paper |
 | `citation_count` | Within 10% or 20 (whichever is larger) | Within 25% or 50, but outside the PASS band | Further out: a different paper, a stale fetch, or a count from a different API |
-| `doi_resolves` | The DOI resolves to the expected paper | (No PARTIAL: the check is binary) | `lit-search doi-exists` returns `not_found` for this DOI, or the DOI resolves to a different paper. A lookup that didn't complete, and a missing CrossRef, Semantic Scholar, or OpenAlex record, are `unverifiable`, never FAIL |
+| `doi_resolves` | `lit-search doi-exists` returns `resolves`, and a record read from `lit-search metadata` (the registering agency's record included), the arXiv API, or the registering agency's own record is the expected paper | (No PARTIAL: the check is binary) | `lit-search doi-exists` returns `not_found` for this DOI, or the record at the DOI is a different paper. `registered_no_url`, a lookup that didn't complete, and a missing CrossRef, Semantic Scholar, or OpenAlex record are `unverifiable`, never FAIL |
 
 **Why count and later-author mismatches must be FAIL, not PARTIAL.** The
 iterate command acts on FAIL only. A PARTIAL verdict reaches the user as
@@ -289,8 +321,10 @@ outcomes. Recalibrate when patterns emerge across runs.
   iterates up to its limit (five by default).
 - **UNVERIFIABLE claims**, where the check didn't complete (429, 5xx,
   timeout, connection error, exhausted budget, or an implausibly empty
-  payload), appear as `status: unverifiable` in `corrections.jsonl`, with
-  `true_value: null`. They **never** add up to a FAIL. Don't emit a
+  payload), or where the DOI is registered but doesn't resolve
+  (`registered_no_url`), appear as `status: unverifiable` in
+  `corrections.jsonl`, with `true_value: null`. They **never** add up to
+  a FAIL. Don't emit a
   `doi_resolves` failure for a row you couldn't check, don't write a
   `fix_hint` telling the proposer to remove it, and don't classify it as
   confabulation.
@@ -453,7 +487,7 @@ BibTeX file path separately.)
 ```jsonl
 {"claim_id":"10.xxxx-yyyy-authors","doi":"10.xxxx/yyyy","status":"fail","category":"authors","description":"Authors for row N","proposer_value":"Smith et al. (2024)","true_value":"Jones, Wei & Park (2024)","severity":"high","failure_type":"encoding_artefact","fix_hint":"CrossRef returns authors[0].family='Jones'; substitute in row N's Authors (Year) column. CrossRef family/given was swapped at the source.","source_method":"lit-search metadata","source_file":"Findings table row N"}
 {"claim_id":"10.xxxx-yyyy-year","doi":"10.xxxx/yyyy","status":"pass","category":"year","description":"Publication year for row N","proposer_value":2024,"true_value":2024,"severity":null,"failure_type":null,"fix_hint":null,"source_method":"lit-search metadata","source_file":"Findings table row N"}
-{"claim_id":"10.xxxx-yyyy-doi_resolves","doi":"10.xxxx/yyyy","status":"fail","category":"doi_resolves","description":"DOI resolves to expected paper for row M","proposer_value":true,"true_value":false,"severity":"high","failure_type":"confabulation","fix_hint":"lit-search doi-exists returned not_found (HTTP 404, responseCode 100, echoed handle 10.xxxx/yyyy); the candidate appears fabricated. Remove row M from the Findings table in iterate mode.","source_method":"lit-search metadata found no record; lit-search doi-exists: not_found (HTTP 404, responseCode 100)","source_file":"Findings table row M"}
+{"claim_id":"10.xxxx-yyyy-doi_resolves","doi":"10.xxxx/yyyy","status":"fail","category":"doi_resolves","description":"DOI resolves to expected paper for row M","proposer_value":true,"true_value":false,"severity":"high","failure_type":"confabulation","fix_hint":"lit-search doi-exists returned not_found (HTTP 404, responseCode 100, echoed handle 10.xxxx/yyyy); the candidate appears fabricated. Remove row M from the Findings table in iterate mode.","source_method":"lit-search metadata found no record (no index, and no registering agency's record); lit-search doi-exists: not_found (HTTP 404, responseCode 100)","source_file":"Findings table row M"}
 {"claim_id":"10.xxxx-zzzz-doi_resolves","doi":"10.xxxx/zzzz","status":"unverifiable","category":"doi_resolves","description":"DOI resolves to expected paper for row P","proposer_value":true,"true_value":null,"severity":null,"failure_type":null,"fix_hint":null,"source_method":"lit-search metadata found no record; lit-search doi-exists: unverifiable (HTTP 429 after retries). Check did not complete; row preserved.","source_file":"Findings table row P"}
 ```
 <!-- END corrections.jsonl -->
@@ -521,6 +555,22 @@ The fields:
   metadata found", which it says for HTTP 429 as readily as for a DOI no
   index holds. If `doi-exists` returns anything else, a missing record is
   no grounds for a FAIL.
+- **A `doi_resolves` PASS needs `doi-exists` to have returned
+  `resolves`**, as well as a record that is the expected paper. Name the
+  record's source in `source_method`, for example:
+
+  ```text
+  lit-search metadata (doi.org (registration agency)); lit-search doi-exists: resolves
+  ```
+
+  For `registered_no_url`, the claim is `unverifiable` whatever the record
+  says, and its `source_method` gives the reason, for example:
+
+  ```text
+  lit-search doi-exists: registered_no_url (HTTP 200, responseCode 200): registered,
+  but has no URL to resolve to; a real DOI with a broken registration, not a
+  fabrication. Row preserved.
+  ```
 
 ## Adversarial posture
 

@@ -7,8 +7,11 @@
 Academic literature search CLI for the lit-scout agent.
 
 Provides subcommands for querying CrossRef, Semantic Scholar, and OpenAlex
-APIs with automatic fallback, rate limiting, and deduplication. All output
-is JSON to stdout for machine consumption by the lit-scout agent.
+APIs with automatic fallback, rate limiting, and deduplication. The DOI
+resolver at doi.org answers two further questions: whether a DOI resolves
+(`doi-exists`), and, when none of the three indexes holds a DOI, what the
+agency that registered it records (the last source of `metadata`). All
+output is JSON to stdout for machine consumption by the lit-scout agent.
 
 Usage:
     lit-search.py metadata DOI
@@ -81,6 +84,12 @@ DOI_RESOLVER = "https://doi.org"
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 OPENALEX_BASE = "https://api.openalex.org"
 
+#: Headers for the `doi-exists` lookup and the registration agency's record.
+#: The contact address is for the CrossRef and OpenAlex polite pools only
+#: (see `_resolve_mailto`), so these requests identify the tool and nobody
+#: else; no key is added to them either. They override the shared client's
+#: own User-Agent, which may carry the address.
+DOI_ORG_HEADERS = {"User-Agent": "lit-scout/1.0"}
 
 
 def _polite(params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -915,6 +924,114 @@ def _normalise_openalex(raw: dict) -> dict[str, Any]:
     }
 
 
+#: How a record read from the registering agency through doi.org is named in
+#: `source` and `sources`, so that a reader can see where it came from.
+AGENCY_SOURCE = "doi.org (registration agency)"
+
+
+def _csl_text(value: Any) -> str | None:
+    """
+    Return a CSL-JSON text variable as one stripped string, or None.
+
+    CSL-JSON allows a text variable such as `title` or `container-title` to
+    arrive as a string or, from some agencies, as a list of strings; a list
+    gives its first item. An empty or non-text value gives None.
+    """
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _csl_author_name(author: Any) -> str | None:
+    """
+    Return one CSL-JSON name as text, in the form `_normalise_crossref` uses.
+
+    A person is written as `family` and `given` ("Family, Given"), with any
+    `non-dropping-particle` ("van", "de") kept in front of the family name;
+    an organisation or an unparsed name as `literal`. A name with only one
+    part is kept as it stands: JaLC was seen on 12 November 2026 (DOI
+    10.11501/3140078) writing a whole name, "Family, Given", in `given`
+    alone. A non-standard `name` is read as `literal` is.
+
+    Args:
+        author: one item of the record's `author` list.
+
+    Returns:
+        The name, or None when the item holds no usable name.
+    """
+    if not isinstance(author, dict):
+        return None
+    family = _csl_text(author.get("family"))
+    particle = _csl_text(author.get("non-dropping-particle"))
+    if family and particle:
+        family = f"{particle} {family}"
+    given = _csl_text(author.get("given"))
+    literal = _csl_text(author.get("literal")) or _csl_text(author.get("name"))
+    if family and given:
+        return f"{family}, {given}"
+    return family or literal or given
+
+
+def _normalise_csl(raw: dict, requested: str) -> dict[str, Any]:
+    """
+    Normalise a CSL-JSON record from the agency that registered a DOI.
+
+    doi.org hands a request for CSL-JSON to the registering agency's own
+    service (DataCite, mEDRA, JaLC, CrossRef, and others), so the record is
+    the registration itself, not an index's copy of it. It carries no
+    citation or reference counts, which stay None.
+
+    Args:
+        raw: the CSL-JSON object the agency returned.
+        requested: the DOI asked for, bare.
+
+    Returns:
+        A record in the same shape as the other normalisers', plus `venue`
+        (from `container-title`, else `publisher`) and `type` (the CSL item
+        type). `doi` is the DOI asked for when the record's own DOI differs
+        from it only in case (DataCite writes the suffix in capitals), and
+        the record's DOI otherwise, so that a different DOI stays visible.
+    """
+    title = _csl_text(raw.get("title"))
+    subtitle = _csl_text(raw.get("subtitle"))
+    if title and subtitle:
+        title = _join_title_and_subtitle(title, subtitle)
+
+    authors: list[str] = []
+    raw_authors = raw.get("author")
+    for author in raw_authors if isinstance(raw_authors, list) else []:
+        name = _csl_author_name(author)
+        if name:
+            authors.append(name)
+
+    year = None
+    issued = raw.get("issued")
+    parts = issued.get("date-parts") if isinstance(issued, dict) else None
+    if isinstance(parts, list) and parts and isinstance(parts[0], list) and parts[0]:
+        year = _parse_year(parts[0][0])
+
+    record_doi = _csl_text(raw.get("DOI"))
+    if not record_doi or record_doi.casefold() == requested.casefold():
+        record_doi = requested
+
+    return {
+        "title": title,
+        "authors": authors,
+        "year": year,
+        "doi": record_doi,
+        "openalex_id": None,
+        "s2_id": None,
+        "citation_count": None,
+        "reference_count": None,
+        "venue": _csl_text(raw.get("container-title")) or _csl_text(raw.get("publisher")),
+        "type": _csl_text(raw.get("type")),
+        "source": AGENCY_SOURCE,
+        "abstract": _csl_text(raw.get("abstract")),
+    }
+
+
 def _reconstruct_openalex_abstract(raw: dict) -> str | None:
     """
     Reconstruct abstract from OpenAlex's inverted index format.
@@ -1016,12 +1133,88 @@ def _deduplicate(papers: list[dict]) -> list[dict]:
 # ============================================================================
 
 
+#: The media type doi.org's content negotiation answers with CSL-JSON.
+DOI_CSL_ACCEPT = "application/vnd.citationstyles.csl+json"
+#: Finite timeouts for the agency's record: doi.org redirects to the agency.
+DOI_CSL_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+
+
+def _agency_record(doi: str, client: httpx.Client) -> dict | None:
+    """
+    Read the registering agency's own record of *doi*, through doi.org.
+
+    Asks `https://doi.org/<DOI>` for CSL-JSON, following redirects: doi.org
+    hands the request to the agency that registered the DOI (DataCite for
+    arXiv and Zenodo, mEDRA, JaLC, CrossRef, and others), which answers
+    from its registration. This covers a DOI that no index holds yet, such
+    as a deposit made the same day (Shawn's design, 11 November 2026: the
+    "is it the right target" check, through doi.org).
+
+    The DOI is percent-encoded once for the path, keeping its `/`, as
+    `cmd_doi_exists` does. The request carries `DOI_ORG_HEADERS` and no key:
+    `_enforce_credential_scope` removes any Semantic Scholar key, on the
+    redirected requests too.
+
+    Args:
+        doi: the DOI, bare or written as a doi.org link.
+        client: the shared client.
+
+    Returns:
+        The normalised record (see `_normalise_csl`) with `record_url`, the
+        address the agency answered from; or None for something that is not
+        a DOI, an HTTP error status, no answer, a body that is not a JSON
+        object, or a record without a title.
+    """
+    requested = _DOI_PREFIX.sub("", doi.strip())
+    if not requested.startswith("10.") or "/" not in requested:
+        return None
+    url = f"{DOI_RESOLVER}/{urllib.parse.quote(requested, safe='/')}"
+    headers = {**DOI_ORG_HEADERS, "Accept": DOI_CSL_ACCEPT}
+    try:
+        resp = _request_with_retry(
+            lambda: client.get(
+                url, headers=headers, timeout=DOI_CSL_TIMEOUT, follow_redirects=True
+            ),
+            host=_host_of(url),
+            source="doi.org",
+        )
+    except httpx.HTTPError as exc:
+        log.warning(
+            "doi.org: no answer for the registration agency's record of %s (%s)",
+            requested, _redact(str(exc)) or type(exc).__name__,
+        )
+        return None
+    if resp.status_code != 200:
+        log.warning(
+            "doi.org: HTTP %d for the registration agency's record of %s",
+            resp.status_code, requested,
+        )
+        return None
+    try:
+        raw = resp.json()
+    except ValueError:  # json.JSONDecodeError is a ValueError
+        raw = None
+    if not isinstance(raw, dict):
+        log.warning("doi.org: the answer for %s is not a CSL-JSON record", requested)
+        return None
+    record = _normalise_csl(raw, requested)
+    if not record["title"]:
+        log.warning("doi.org: the agency's record of %s has no title", requested)
+        return None
+    record["record_url"] = _redact(str(resp.url))
+    return record
+
+
 def cmd_metadata(doi: str, client: httpx.Client) -> dict:
     """
     Fetch full metadata for a single paper by DOI.
 
-    Tries CrossRef first, then Semantic Scholar, then OpenAlex.
-    Merges results to produce the most complete record.
+    Tries CrossRef first, then Semantic Scholar, then OpenAlex, and merges
+    their results to produce the most complete record. When none of the
+    three holds a record, the registering agency's own record is read
+    through doi.org (`_agency_record`), with `source` and `sources` naming
+    it as `AGENCY_SOURCE`; it has no citation count. Only when that fails
+    too is the result "No metadata found".
     """
     results = []
 
@@ -1065,7 +1258,14 @@ def cmd_metadata(doi: str, client: httpx.Client) -> dict:
         results.append(record)
 
     if not results:
-        return {"error": f"No metadata found for DOI: {doi}"}
+        # No index holds the DOI (or none could be read): ask the agency
+        # that registered it, the last source.
+        agency = _agency_record(doi, client)
+        if agency is None:
+            return {"error": f"No metadata found for DOI: {doi}"}
+        log.info("metadata: no index holds %s; read the registration agency's record", doi)
+        agency["sources"] = [AGENCY_SOURCE]
+        return agency
 
     # Merge: start with first result, fill gaps from subsequent.
     # Use truthiness check so empty lists and zero counts get overwritten
@@ -1385,7 +1585,12 @@ def cmd_openalex_cited_by(
 # Documented in the DOI Foundation's "DOI URI Scheme" (sections 2 and 4) and
 # the Handle.Net proxy server's REST API: responseCode 1 with HTTP 200 is
 # found, 100 with HTTP 404 is not found, and 200 with HTTP 200 is a handle
-# with no values to return.
+# with no values of the type asked for. The lookup asks for the URL values
+# only (`?type=URL`), since a DOI resolves only if its handle holds a URL to
+# send a reader to (Shawn's design, 11 November 2026). Checked live on 12
+# November 2026: `?type=URL` gave responseCode 1 with one URL value, at
+# `data.value`, for 10.5281/zenodo.24128012, and an unknown type gave
+# responseCode 200 with no values.
 DOI_HANDLE_API = f"{DOI_RESOLVER}/api/handles"
 DOI_HANDLE_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 
@@ -1393,17 +1598,40 @@ DOI_HANDLE_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 _DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", re.IGNORECASE)
 
 
+def _handle_url_value(body: dict) -> str | None:
+    """
+    Return the first URL a handle API answer holds, or None.
+
+    A usable value is an item of `values` whose `type` is `URL` and whose
+    `data.value` is a non-empty string.
+    """
+    values = body.get("values")
+    for value in values if isinstance(values, list) else []:
+        if not isinstance(value, dict) or value.get("type") != "URL":
+            continue
+        data = value.get("data")
+        target = data.get("value") if isinstance(data, dict) else None
+        if isinstance(target, str) and target.strip():
+            return target.strip()
+    return None
+
+
 def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
     """
-    Ask the DOI resolver whether *doi* exists, as one of four states.
+    Ask the DOI resolver whether *doi* resolves, as one of four states.
 
     The returned dict's ``state`` is:
 
-    * ``exists``: the resolver holds the DOI (HTTP 200, responseCode 1).
-      Existence only: whether it identifies the expected paper is a
-      separate check.
-    * ``exists_no_values``: the DOI exists but the resolver returned no
-      values for it (HTTP 200, responseCode 200). Also existence only.
+    * ``resolves``: the resolver holds the DOI with a URL to send a reader
+      to (HTTP 200, responseCode 1, and a ``URL`` value with a non-empty
+      string), returned as ``url``. Resolution only: whether the DOI
+      identifies the expected paper is a separate check, against a record
+      (``metadata``, whose last source is the registering agency's own).
+    * ``registered_no_url``: the handle exists but holds no URL, so the DOI
+      does not resolve (HTTP 200 with responseCode 200, which the handle
+      API gives for a handle with no value of the type asked for; or
+      responseCode 1 with no usable URL value). A real DOI with a broken
+      registration, not a fabrication.
     * ``not_found``: the resolver answered, for exactly this DOI, that it
       does not exist (HTTP 404, responseCode 100). The only authoritative
       negative.
@@ -1413,15 +1641,17 @@ def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
       unexpected pairing of status and responseCode.
 
     The DOI is percent-encoded once for the path, keeping its ``/``, so a
-    suffix holding ``#``, ``?`` or ``%`` reaches the resolver whole. The
-    resolver echoes the handle it looked up, and an answer counts only if
-    the echo matches the DOI asked for (without regard to case, since DOIs
-    are case-insensitive).
+    suffix holding ``#``, ``?`` or ``%`` reaches the resolver whole; the
+    query, ``?type=URL``, follows the encoded path. The resolver echoes the
+    handle it looked up, and an answer counts only if the echo matches the
+    DOI asked for (without regard to case, since DOIs are case-insensitive).
+    The request carries ``DOI_ORG_HEADERS`` and no key.
     """
     requested = _DOI_PREFIX.sub("", doi.strip())
     result: dict[str, Any] = {
         "doi": requested,
         "state": "unverifiable",
+        "url": None,
         "http_status": None,
         "response_code": None,
         "reason": "",
@@ -1430,10 +1660,13 @@ def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
         result["reason"] = "not a DOI (expected 10.<prefix>/<suffix>)"
         return result
 
-    url = f"{DOI_HANDLE_API}/{urllib.parse.quote(requested, safe='/')}"
+    url = f"{DOI_HANDLE_API}/{urllib.parse.quote(requested, safe='/')}?type=URL"
     try:
         resp = _request_with_retry(
-            lambda: client.get(url, timeout=DOI_HANDLE_TIMEOUT, follow_redirects=False),
+            lambda: client.get(
+                url, headers=DOI_ORG_HEADERS, timeout=DOI_HANDLE_TIMEOUT,
+                follow_redirects=False,
+            ),
             host=_host_of(url),
             source="doi.org",
         )
@@ -1466,12 +1699,19 @@ def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
         result["reason"] = f"the answer is about a different identifier ({echoed!r})"
         return result
 
+    no_url = "the DOI is registered, but its handle holds no URL, so it does not resolve"
     if (status, code) == (200, 1):
-        result["state"] = "exists"
-        result["reason"] = "the resolver holds this DOI"
+        target = _handle_url_value(body)
+        if target is not None:
+            result["state"] = "resolves"
+            result["url"] = target
+            result["reason"] = "the resolver holds this DOI, with a URL to resolve to"
+        else:
+            result["state"] = "registered_no_url"
+            result["reason"] = no_url
     elif (status, code) == (200, 200):
-        result["state"] = "exists_no_values"
-        result["reason"] = "the DOI exists, but the resolver returned no values for it"
+        result["state"] = "registered_no_url"
+        result["reason"] = no_url
     elif (status, code) == (404, 100):
         result["state"] = "not_found"
         result["reason"] = "the resolver answered that this DOI does not exist"
@@ -1807,7 +2047,7 @@ def main() -> None:
     # doi-exists
     p_exists = subparsers.add_parser(
         "doi-exists",
-        help="Ask the DOI resolver whether a DOI exists, in any registry",
+        help="Ask the DOI resolver whether a DOI resolves (has a URL), in any registry",
     )
     p_exists.add_argument("doi", help="DOI to look up, unencoded")
 

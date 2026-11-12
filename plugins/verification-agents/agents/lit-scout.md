@@ -39,8 +39,9 @@ it.
 ### lit-search: the API helper
 
 Your primary tool for querying academic APIs. It handles rate limiting,
-the fallback chain (CrossRef, then Semantic Scholar, then OpenAlex), and
-deduplication. It ships with this plugin:
+the fallback chain (CrossRef, then Semantic Scholar, then OpenAlex, and
+for `metadata` last of all the registering agency's own record, read
+through doi.org), and deduplication. It ships with this plugin:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/lit-search" SUBCOMMAND ARGS
@@ -53,7 +54,7 @@ deduplication. It ships with this plugin:
 | `citations DOI` | Forward chaining: papers that cite it | `citations "10.1371/journal.pcbi.1009041" --limit 20` |
 | `search "QUERY"` | Keyword or title search | `search "FAIR vocabulary SKOS"` |
 | `openalex-cited-by DOI` | High-volume cited-by (free) | `openalex-cited-by "10.1371/journal.pcbi.1009041"` |
-| `doi-exists DOI` | Whether a DOI exists in any registry (the verifier's check) | `doi-exists "10.48550/arXiv.2303.08774"` |
+| `doi-exists DOI` | Whether a DOI resolves, in any registry: `resolves` (with its `url`), `registered_no_url`, `not_found`, or `unverifiable` (the verifier's check) | `doi-exists "10.48550/arXiv.2303.08774"` |
 | `bibtex DOI [DOI ...]` | Generate BibTeX entries | `bibtex "10.1371/..." "10.1038/..."` |
 
 Output is JSON on standard output (BibTeX for `bibtex`); status and
@@ -401,7 +402,8 @@ entirely. Your job in iterate mode is targeted correction:
    `lit-search doi-exists` returned `not_found` for that exact DOI. If a
    `fix_hint` asks you to remove a row but the `source_method` records only
    a missing CrossRef, Semantic Scholar, or OpenAlex record, a rate limit,
-   a server error, a timeout, or no status at all, **don't remove it**.
+   a server error, a timeout, `registered_no_url` (a real DOI whose
+   registration has no URL), or no status at all, **don't remove it**.
    Keep the row, and say in Proposer self-check that you declined the
    removal because the check hadn't completed. A
    throttled API and a fabricated citation look the same from outside, and
