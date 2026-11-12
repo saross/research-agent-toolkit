@@ -2783,3 +2783,41 @@ class TestNormaliseCsl:
         assert set(crossref_shape) <= set(record)
         assert record["source"] == lit_search.DOI_CSL_SOURCE
         assert record["citation_count"] is None
+
+
+
+class TestTargetUrlPercentEscapes:
+    """Review finding R38, last part (GPT in Codex, lane astra, 12 Nov 2026): a registered
+    target URL with a malformed percent escape is not a usable URL; valid escapes are."""
+
+    @pytest.mark.parametrize("url", [
+        "https://%/", "https://host.example/%ZZ", "https://host.example/%",
+        "https://ho%2st.example/", "https://host.example/a%2",
+    ])
+    def test_a_malformed_escape_is_refused(self, url):
+        assert lit_search._usable_url(url) is False
+
+    @pytest.mark.parametrize("url", [
+        "https://host.example/a%25b", "https://host.example/a%23b",
+        "https://host.example/caf%C3%A9", "https://host.example/%e2%82%ac",
+    ])
+    def test_a_valid_escape_is_accepted(self, url):
+        assert lit_search._usable_url(url) is True
+
+    def test_a_refused_target_leaves_the_doi_registered_without_a_url(self, reset_pacing):
+        doi = "10.1000/bad-escape"
+        body = {"responseCode": 1, "handle": doi, "values": [
+            {"index": 1, "type": "URL",
+             "data": {"format": "string", "value": "https://host.example/%ZZ"}},
+        ]}
+        client = TestDoiExists._answering(200, body)
+        result = lit_search.cmd_doi_exists(doi, client)
+        assert result["state"] == "registered_no_url" and result["url"] is None
+
+    def test_a_bare_doi_keeps_its_literal_percent(self, reset_pacing):
+        doi = "10.1000/a%ZZb"
+        seen = []
+        client = TestDoiExists._answering(404, {"responseCode": 100, "handle": doi}, seen)
+        result = lit_search.cmd_doi_exists(doi, client)
+        assert result["state"] == "not_found"
+        assert seen[0].url.raw_path.split(b"?")[0].endswith(b"/10.1000/a%25ZZb")

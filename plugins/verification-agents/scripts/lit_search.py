@@ -1783,6 +1783,10 @@ def _handle_value_text(data: Any) -> str | None:
         return None
 
 
+# A "%" not followed by two hexadecimal digits (RFC 3986 section 2.1).
+_MALFORMED_PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
+
+
 def _usable_url(text: str) -> bool:
     """
     True if *text* is a well-formed absolute http or https URL.
@@ -1790,15 +1794,21 @@ def _usable_url(text: str) -> bool:
     This checks the text alone; nothing is fetched. Refused: whitespace
     anywhere (surrounding whitespace included), a control, format, or
     surrogate character, a character RFC 3986 never allows unencoded, a
-    scheme other than http or https, a relative reference, no host, and an
+    scheme other than http or https, a relative reference, no host, an
     authority that does not parse (an unclosed IPv6 bracket, a port that is
-    not a number in range).
+    not a number in range), and a malformed percent escape anywhere.
     """
     if not text or any(
         ch.isspace() or ch in _NEVER_IN_A_URI
         or unicodedata.category(ch) in _REFUSED_CATEGORIES
         for ch in text
     ):
+        return False
+    # urlsplit does not validate percent escapes, and RFC 3986 section 2.1
+    # requires "%" to begin exactly two hexadecimal digits, anywhere in the
+    # URL, the authority included. Refuse a malformed escape rather than
+    # repair it: the registered value is evidence, not something to fix.
+    if _MALFORMED_PERCENT.search(text):
         return False
     try:
         parts = urllib.parse.urlsplit(text)
