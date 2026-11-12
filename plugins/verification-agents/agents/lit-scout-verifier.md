@@ -213,6 +213,17 @@ claim that the landing page is up or shows the work. Its `state`:
 Only `not_found`, or a record at the DOI that is a different paper,
 supports a `doi_resolves` FAIL.
 
+**The row's other claims when its DOI doesn't exist.** A `not_found`
+fails the `doi_resolves` claim only. The row's authors, year, title, and
+citation-count claims are `unverifiable`, not FAIL: a non-existent
+identifier doesn't prove that the claimed work, or its authors and year,
+are wrong, only that nothing at this DOI can confirm them (the work may
+exist under another identifier). Give each the `source_method` "no record
+at this DOI; see the `doi_resolves` FAIL", and leave `fix_hint` null; the
+row's removal comes from the `doi_resolves` claim. If an index or agency
+record for the same work under another identifier is in hand, score the
+fields against it and name it, but don't search for one.
+
 **Which records establish identity.** A `doi_resolves` pass needs a
 record you have read from `metadata`, the registering agency's public
 metadata service (including DataCite), or the authoritative arXiv record,
