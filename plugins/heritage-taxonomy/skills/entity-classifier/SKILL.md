@@ -57,8 +57,24 @@ form ("the hotel", "the hotel's parlour"). Indicators belong to the
 mention they describe: a pronoun that refers back to it ("its tariff")
 or an elliptical reference to its spaces ("the room") adds to that
 mention rather than starting a new one. A passage, or a numbered item in
-a batch, that refers to the entity twice holds two mentions, and each
-gets its own record.
+a batch, that names the entity twice, by two explicit name or short-form
+mentions, holds two mentions, and each gets its own record:
+
+- "The hotel opened. It later burned." One mention, one record. "It"
+  attaches to "The hotel", so the record carries the opening
+  (organisation: agency verbs) and the fire (building:
+  construction/damage), and is labelled **both**.
+- "The hotel opened. The hotel later burned." Two mentions, two
+  records: the first **organisation** (agency verbs), the second
+  **building** (construction/damage).
+
+The entity rolls up to both either way; the mention counts differ.
+
+If a pronoun or elliptical reference could refer back to more than one
+mention ("It" after two hotels are named), do not attach it by default.
+Label each candidate mention on its own indicators, and flag each one
+whose label the reference would change, saying in its **Flag** field
+which reference is in doubt and what it would add.
 
 ## Classification Heuristic
 
@@ -137,10 +153,20 @@ metonymic shift), each mention takes its own label:
 - Example: "Concert at the hotel [building], with the hotel [organisation] providing
   refreshments". Two mentions, one building and one organisation
 
-**Entity roll-up.** Once every mention is labelled, group the mentions by entity. An entity is
-**both** in the taxonomy if its mentions include both building and organisation, or if any one of
-its mentions is both; otherwise it takes the one label its mentions share. The Megalong example
-below shows two mentions rolling up to both.
+**Entity roll-up.** Once every mention is labelled, group the mentions by entity, and take the
+union of each entity's labels twice:
+
+- **Provisional union:** over all its mentions, flagged or not.
+- **Supported union:** over its mentions with no open flag (a **Flag** of `none` or
+  `resolved:`), leaving out those still `for review:`. If none is left, it is **unresolved**.
+
+A union is **both** if it includes both building and organisation, or any one mention that is
+both; otherwise it is the one label its mentions share. When the two unions agree, that is the
+entity's taxonomy facet. When they differ, the entity's recommendation is **pending review**:
+report both unions, and let the reviewer's decisions on the flagged mentions settle it. Flagged
+mentions stay in the mention counts and in the report; they are never discarded, only kept from
+setting a facet on their own. The Megalong example below shows two mentions rolling up to both,
+and the church example an entity left pending review.
 
 ### Default Guidance
 
@@ -174,13 +200,25 @@ write the file.
   per-entity roll-up, a summary of patterns, taxonomy recommendations,
   and comparison tables only where the project has already classified
   other entity types, with their own figures.
-- **Counts:** once the per-mention records are written, tally them with a
-  short script that reads each record's `**Entity:**` and
-  `**Classification:**` lines from the file, not by hand. It counts the
-  mentions under each label, then applies the roll-up rule to each
-  entity; fill the summary and the roll-up table from its output. A hand
-  count drifts over a long batch, and a script can be run again when a
-  reviewer changes a label.
+- **Counts:** once the per-mention records are written, tally them with
+  the plugin's bundled script, not by hand and not with a script of your
+  own:
+
+  ```bash
+  python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/tally_classifications.py" <results-file>
+  ```
+
+  It reads each record's `**Entity:**`, `**Classification:**`,
+  `**Confidence:**`, and `**Flag:**` lines, and stops with an error
+  naming the record if one is missing or malformed: correct the record
+  and run it again. Its output goes to the terminal, as Markdown tables
+  (the mention counts by label, with flagged counts, and the per-entity
+  roll-up, with both unions and the recommendation); copy the tables
+  into the report's classification summary in place of the
+  placeholders. Do not save the output as a separate file unless the
+  project asks; `--json` prints the same figures as JSON. A hand count
+  drifts over a long batch, and the script can be run again when a
+  reviewer changes a label or settles a flag.
 - **Plugin version** for the report's method line: the `version` in
   `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`.
 
@@ -212,6 +250,11 @@ indicators found in the context]
 
 "Organisation" covers a business (a hotel as its proprietor or
 management) as well as a body (a congregation, a committee, an order).
+
+Write the **Flag** as `none` or `for review:`. A reviewer who settles a
+flag changes it to `resolved:` and their decision, corrects the
+classification if need be, and runs the tally again; the record then
+counts towards the supported union.
 
 ## Confidence Levels
 
@@ -358,8 +401,8 @@ first mention, so they do not make this one both.
 > "The Megalong Hotel proprietor applied for a licence renewal. Meanwhile, a dance was held at
 > **the hotel** on Saturday evening."
 
-**Roll-up:** the Megalong Hotel has one organisation mention and one building mention, so it is
-**both** in the taxonomy.
+**Roll-up:** the Megalong Hotel has one organisation mention and one building mention, neither
+flagged, so its provisional and supported unions agree: it is **both** in the taxonomy.
 
 ---
 
@@ -411,6 +454,10 @@ organisation, is given at low confidence and flagged.
 
 **Context:**
 > "Among those present was Mr. J. Smith, of the Wesleyan Church, Lawson."
+
+**Roll-up:** if this is the church's only mention, its provisional union is organisation and its
+supported union unresolved, since its one mention is still for review. The two differ, so the
+church is **pending review**, not organisation.
 
 ## Working with Batch Data
 

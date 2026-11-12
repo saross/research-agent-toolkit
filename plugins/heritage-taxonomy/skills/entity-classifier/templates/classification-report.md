@@ -11,36 +11,42 @@
 
 ## Classification summary
 
-The counts in this section are tallied by a script from the per-mention
-records below, not by hand.
+The counts in this section are tallied by the plugin's
+`tally_classifications.py` from the per-mention records below, not by
+hand.
 
 ### Mentions
 
-| Mention label | Count | Percentage |
-| --- | --- | --- |
-| Building | {BUILDING_COUNT} | {BUILDING_PCT}% |
-| Organisation | {ORGANISATION_COUNT} | {ORGANISATION_PCT}% |
-| Both | {BOTH_COUNT} | {BOTH_PCT}% |
-| **Total** | **{TOTAL_COUNT}** | **100%** |
+| Mention label | Count | Percentage | Flagged |
+| --- | --- | --- | --- |
+| Building | {BUILDING_COUNT} | {BUILDING_PCT}% | {BUILDING_FLAGGED} |
+| Organisation | {ORGANISATION_COUNT} | {ORGANISATION_PCT}% | {ORGANISATION_FLAGGED} |
+| Both | {BOTH_COUNT} | {BOTH_PCT}% | {BOTH_FLAGGED} |
+| **Total** | **{TOTAL_COUNT}** | **100%** | **{FLAGGED_COUNT}** |
 
-Percentages are of mentions analysed, rounded to one decimal place. A
-mention is labelled both only when that one mention carries spatial and
-agency indicators together.
+Percentages are of mentions analysed, flagged ones included, rounded to
+one decimal place. "Flagged" counts the mentions whose flag is still
+open (for review). A mention is labelled both only when that one mention
+carries spatial and agency indicators together.
 
 ### Entity roll-up
 
-| Entity | Mentions | Building | Organisation | Both | Flagged | Taxonomy facet |
-| --- | --- | --- | --- | --- | --- | --- |
-| {ENTITY_NAME} | {E_TOTAL} | {E_BUILDING} | {E_ORG} | {E_BOTH} | {E_FLAGGED} | {E_FACET} |
+| Entity | Mentions | Building | Org. | Both | Flagged | Provisional | Supported | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| {ENTITY} | {E_TOTAL} | {E_BLDG} | {E_ORG} | {E_BOTH} | {E_FLAG} | {E_PROV} | {E_SUPP} | {E_REC} |
 
-**Entities by facet:** {ENTITY_BUILDING_COUNT} building only,
-{ENTITY_ORGANISATION_COUNT} business or organisation only, and
-{ENTITY_BOTH_COUNT} both.
+**Entities by recommendation:** {ENTITY_BUILDING_COUNT} building only,
+{ENTITY_ORGANISATION_COUNT} business or organisation only,
+{ENTITY_BOTH_COUNT} both, and {ENTITY_PENDING_COUNT} pending review.
 
-An entity is both if its mentions include both building and
-organisation, or if any one of them is both; otherwise it takes the one
-label its mentions share. "Flagged" counts the mentions marked for
-review, so a reviewer can see which facets rest on a doubtful reading.
+Each entity's labels are combined twice. The **provisional** union takes
+all its mentions; the **supported** union leaves out mentions still for
+review, and is "unresolved" if none is left. A union is both if it
+includes both building and organisation, or any one mention that is
+both; otherwise it is the one label its mentions share. Where the two
+unions agree, that is the recommended facet; where they differ, the
+recommendation is **pending review** until the flagged mentions are
+settled. Flagged mentions stay in every count above; none is discarded.
 
 ---
 
@@ -63,6 +69,10 @@ review block for the human reviewer:
 
 **Additional or alternative tags:**
 ```
+
+To settle a flagged mention, change its `for review:` to `resolved:` and
+the decision, correct the classification if need be, and run the tally
+again.
 
 ---
 
@@ -133,12 +143,18 @@ own figures. The percentages are of mentions.
   and management, financial operations, services, membership and
   subscriptions, and committees and governance.
 - **Unit:** the mention. Each reference to the entity is labelled on its
-  own indicators, so a passage that names the entity twice gives two
-  records.
+  own indicators, so a passage that names the entity twice, by two
+  explicit name or short-form mentions, gives two records. A pronoun or
+  elliptical reference joins the mention it refers back to; one with an
+  ambiguous antecedent is flagged, not attached.
 - **Both:** for a mention, a single mention carrying spatial and agency
-  indicators together; for an entity, mentions that include both
+  indicators together; for an entity's union, mentions that include both
   building and organisation, or any one mention that is both.
-- **Counts:** tallied by a script from the per-mention records.
+- **Flagged mentions** count in the mention totals and the provisional
+  union, but not in the supported union. An entity whose two unions
+  differ is pending review; no flagged record is discarded.
+- **Counts:** tallied by the plugin's `tally_classifications.py` from the
+  per-mention records.
 
 **Overall confidence:** {CONFIDENCE_LEVEL}
 
@@ -146,8 +162,9 @@ own figures. The percentages are of mentions.
 
 ## Next steps
 
-1. **Review the classifications**, starting with the flagged mentions,
-   using the review block under each mention.
+1. **Review the classifications**, starting with the flagged mentions
+   and the entities pending review, using the review block under each
+   mention; then run the tally again.
 2. **Apply the approved classifications** to the project's taxonomy and
    tags, by the project's own procedure.
 3. **Record the decision** where the project keeps its decisions.
