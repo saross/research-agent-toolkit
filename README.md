@@ -50,6 +50,9 @@ included, and drops the old install. Commands and agents are now `/proposer-veri
 
 **Requirements:**
 
+- A current Claude Code. These instructions were tested on 2.1.322. Moving from
+  `verification-agents` needs 2.1.193 or later, and the shell form of `claude plugin configure`
+  needs 2.1.285 or later.
 - The `proposer-verifier` helper scripts need [`uv`](https://docs.astral.sh/uv/), which installs
   their Python dependencies on first use.
 - The prior-art scout works best with the GitHub CLI, `gh`, signed in.
