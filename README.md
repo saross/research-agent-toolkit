@@ -136,17 +136,19 @@ you would type it in a shell; the plugin adds the run folder, or the DOIs on sta
 Quote a path that contains spaces. Put pipelines and anything more involved inside a script of
 your own, and give its path.
 
-Set the options when you install, or later:
+Set the options when you install:
 
 ```bash
 claude plugin install proposer-verifier@research-agent-toolkit \
   --config library_check_command="python3 $HOME/bin/zotero-library-check.py"
-claude plugin configure proposer-verifier@research-agent-toolkit
 ```
 
-Inside Claude Code, `/plugin configure proposer-verifier` opens the same options. Use full
-paths, and keep API keys out of the option values: they are stored in your `settings.json` and
-shown to the model. A script that needs a key should read it from its own environment or file.
+To change them later, use `/plugin configure proposer-verifier` inside Claude Code. In a shell,
+`claude plugin configure proposer-verifier@research-agent-toolkit` lists the options and which
+are set, and with `--values-stdin` it saves the values in a JSON object read from standard input
+(options you leave out keep their values). Use full paths, and keep API keys out of the option
+values: they are stored in your `settings.json` and shown to the model. A script that needs a
+key should read it from its own environment or file.
 
 **An example for Zotero.**
 [`plugins/proposer-verifier/examples/zotero-library-check.py`](plugins/proposer-verifier/examples/zotero-library-check.py)

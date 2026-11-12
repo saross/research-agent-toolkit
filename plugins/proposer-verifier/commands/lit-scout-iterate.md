@@ -505,7 +505,7 @@ LLM-assisted data extraction from historical documents; scope:
 | Failure | Symptom | Recovery |
 | --- | --- | --- |
 | The proposer errors at iteration 0 | The agent returns an error and no draft | Run the command again with the same query; nothing was saved that could conflict |
-| The proposer errors at a later iteration | Iterate mode fails | The previous iteration's outputs remain. Start `lit-scout` by hand with `previous_draft_path` and `previous_corrections_path` pointing at them |
+| The proposer errors at a later iteration | Iterate mode fails | The previous iteration's outputs remain. Start the `proposer-verifier:lit-scout` agent by hand with `previous_draft_path` and `previous_corrections_path` pointing at them |
 | The verifier errors | Step D returns an error or malformed output | The iteration's `draft.md` is kept: verify it with the `lit-scout-verify` command |
 | No complete corrections block | The extraction in Step F exits with an error | Treat it as a verifier failure: show the verifier's own output, and don't iterate |
 | Unreadable verdicts | Step G prints `VERDICT=INVALID` | The same: show the verifier's own output, say that its verdicts could not be read, and don't report PASS |
