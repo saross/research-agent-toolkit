@@ -42,9 +42,11 @@ In Claude Code, add this repository as a plugin marketplace, then install the pl
 Plugin commands, skills, and agents are namespaced, so the literature scout runs as
 `/proposer-verifier:lit-scout`, and the paper review as `/house-style:review-paper`.
 
-`proposer-verifier` was called `verification-agents` up to version 0.3.1. To move, uninstall
-`verification-agents@research-agent-toolkit`, install `proposer-verifier@research-agent-toolkit`,
-and set again any of its three options you had set: they are stored under the plugin's id.
+`proposer-verifier` was called `verification-agents` before version 0.4.0. If you installed it
+under the old name, run `/plugin install proposer-verifier@research-agent-toolkit` once. The
+marketplace maps the old name to the new one, so Claude Code moves your settings across, options
+included, and drops the old install. Commands and agents are now `/proposer-verifier:…` and
+`proposer-verifier:…`, so update any old names in your own instructions or scripts.
 
 **Requirements:**
 

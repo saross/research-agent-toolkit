@@ -43,5 +43,8 @@
       "description": "Classify dual-nature entities in historical text as building, organisation, or both, for faceted taxonomies.",
       "category": "research"
     }
-  ]
+  ],
+  "renames": {
+    "verification-agents": "proposer-verifier"
+  }
 }
