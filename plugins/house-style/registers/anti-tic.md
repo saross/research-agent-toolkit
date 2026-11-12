@@ -18,15 +18,16 @@ copying its rules, so that the copies cannot drift apart.
 
 Advisory, not a veto: a flag is a prompt to look, not a defect. A
 colon after a heading or a short label is fine, list or not
-("Keywords: survey, settlement, and landscape"); the tell is a
-sentence that announces its list ("Three things matter: X, Y, and
-Z"). A count can't always tell the two apart.
+("Keywords: survey, settlement, and landscape"), and so is the
+occasional sentence that announces its list ("Three things matter: X,
+Y, and Z"). The tell is announcing lists as a habit. A count can't
+always tell a label from an announcement.
 
 | Rule | Ceiling | Why it is a tell |
 | --- | --- | --- |
 | Announcement colons per 1,000 words | ≤ 1.6 | The colon used to announce rather than to list or define, as in an appended interpretive tag ("…: the reason X matters"). The most discriminating measure found so far |
 | "Not X but Y" per 1,000 words | ≤ 3.0 | Antithesis as a recurring move; make the positive claim. Once, as a real contrast, is ordinary prose |
-| Colon-led lists of three or more | 0 | A sentence that announces a list with a colon: three or more comma-separated items closing on *and* or *or*. A list after a heading or a short label doesn't count |
+| Colon-led lists per 1,000 words | ≤ 0.5 | A sentence that announces a list with a colon: three or more comma-separated items closing on *and* or *or*. An occasional one is fine; a recurring one is the tell. A list after a heading or a short label doesn't count |
 | Runs of three or more short sentences | 0 | Three or more sentences of five words or fewer in a row read as staccato performance. Two together may stand; a short sentence is an occasional beat, not a rhythm |
 
 **Evidence for the colon ceiling.** In one author's measurement across
