@@ -82,6 +82,11 @@ FLAG_OPEN = "for review"
 FLAG_RESOLVED = "resolved"
 
 MENTION_HEADING = re.compile(r"^###\s+Mention\s+(\d+)\s*:")
+# Any heading that starts with "Mention", at any level, case ignored: one that does not
+# match MENTION_HEADING exactly is a malformed record, not prose (review finding R42).
+MENTION_LIKE = re.compile(r"^#{1,6}\s*mention\b", re.IGNORECASE)
+SECTION = re.compile(r"^##\s+(.*?)\s*$")
+DETAILED = "detailed analysis"
 ANY_HEADING = re.compile(r"^#{1,6}\s")
 FIELD = re.compile(r"^\*\*(Entity|Classification|Confidence|Flag):\*\*[ \t]*(.*?)\s*$")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
@@ -124,10 +129,14 @@ def _flag_state(value: str) -> str | None:
     lowered = value.lower()
     if lowered == FLAG_NONE:
         return FLAG_NONE
-    if lowered.startswith(FLAG_OPEN + ":"):
-        return FLAG_OPEN
-    if lowered.startswith(FLAG_RESOLVED + ":"):
-        return FLAG_RESOLVED
+    # Both flag forms need text after the colon: an open flag names its
+    # question, a settled one its decision (review finding R43). An empty
+    # "resolved:" would otherwise turn a pending entity firm with no
+    # decision recorded.
+    for state in (FLAG_OPEN, FLAG_RESOLVED):
+        prefix = state + ":"
+        if lowered.startswith(prefix):
+            return state if value[len(prefix):].strip() else None
     return None
 
 
@@ -178,6 +187,7 @@ def parse_report(text: str) -> list[Mention]:
     raw_records: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
     fence: str | None = None
+    section = ""  # the current level-two heading, lower-cased
 
     for line_no, line in enumerate(text.splitlines(), 1):
         # Skip fenced blocks: the template's review-block example holds a
@@ -196,6 +206,14 @@ def parse_report(text: str) -> list[Mention]:
             current = {"number": int(heading.group(1)), "line": line_no}
             raw_records.append(current)
             continue
+        if MENTION_LIKE.match(line):
+            raise ReportError(
+                f"line {line_no}: malformed mention heading {line.strip()!r}; "
+                "expected '### Mention N: …' with N a number"
+            )
+        level_two = SECTION.match(line)
+        if level_two:
+            section = level_two.group(1).lower()
         if ANY_HEADING.match(line):
             # Any other heading (Pattern analysis, say) closes the record,
             # so a stray field line further down cannot attach to it.
@@ -203,6 +221,13 @@ def parse_report(text: str) -> list[Mention]:
             continue
 
         field = FIELD.match(line)
+        if field and current is None and section.startswith(DETAILED):
+            # A record's field line with no record to belong to: its heading
+            # was malformed or a sub-heading cut it off (review finding R42).
+            raise ReportError(
+                f"line {line_no}: a **{field.group(1)}:** line in Detailed analysis "
+                "outside any '### Mention N:' record"
+            )
         if field and current is not None:
             key = field.group(1).lower()
             if key in current:

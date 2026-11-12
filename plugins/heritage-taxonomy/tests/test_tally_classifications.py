@@ -370,3 +370,57 @@ def test_cli_warns_on_names_differing_only_in_case(tmp_path: Path) -> None:
     result = run_cli(path)
     assert result.returncode == 0
     assert "warning" in result.stderr and "Imperial hotel" in result.stderr
+
+
+
+# --- Review findings R42 and R43 (GPT in Codex, lane astra, 12 Nov 2026) ----
+
+
+@pytest.mark.parametrize("heading", [
+    "#### Mention 2: an invented mention of Imperial Hotel",
+    "### Mention two: an invented mention of Imperial Hotel",
+    "### mention 2 an invented mention of Imperial Hotel",
+])
+def test_cli_malformed_mention_heading_fails_loudly(tmp_path: Path, heading: str) -> None:
+    """A second, complete record under a malformed heading is never silently dropped."""
+    bad = record(2, "Imperial Hotel", "organisation").replace(
+        "### Mention 2: an invented mention of Imperial Hotel", heading)
+    path = tmp_path / "results.md"
+    path.write_text(report(record(1, "Carrington Hotel", "building"), bad))
+    result = run_cli(path)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "malformed mention heading" in result.stderr
+
+
+def test_cli_orphaned_record_block_fails_loudly(tmp_path: Path) -> None:
+    """Field lines cut off from their record by a sub-heading are an error, not ignored."""
+    orphan = "#### Notes\n**Entity:** Imperial Hotel\n**Classification:** building\n"
+    path = tmp_path / "results.md"
+    path.write_text(report(record(1, "Carrington Hotel", "building"), orphan))
+    result = run_cli(path)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "outside any '### Mention N:' record" in result.stderr
+
+
+@pytest.mark.parametrize("flag", ["resolved:", "resolved:   ", "for review:", "for review: \t"])
+def test_a_flag_with_nothing_after_the_colon_fails(tally: Any, flag: str) -> None:
+    """Both flag forms need a question or a decision after the colon."""
+    with pytest.raises(tally.ReportError):
+        tally.parse_report(report(record(1, "Wesleyan Church", "organisation", flag=flag)))
+
+
+def test_cli_empty_resolution_gives_no_tally(tmp_path: Path) -> None:
+    """An empty "resolved:" cannot turn a pending entity firm."""
+    path = tmp_path / "results.md"
+    path.write_text(report(record(1, "Wesleyan Church", "organisation", flag="resolved:")))
+    result = run_cli(path)
+    assert result.returncode == 1 and result.stdout == ""
+
+
+def test_a_resolution_with_a_decision_still_counts(tally: Any) -> None:
+    """The positive guard: a settled flag that records its decision is supported."""
+    flag = "resolved: the reviewer read it as the congregation"
+    mentions = tally.parse_report(report(record(1, "Wesleyan Church", "organisation", flag=flag)))
+    assert mentions[0].flag == "resolved"
