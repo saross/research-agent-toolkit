@@ -179,6 +179,8 @@ automatic fail, but an unreported count is a skipped check.
 - [ ] Every load-bearing point skeleton-complete (3/3 legs)
 - [ ] Section anchor density checked against the register's targets
 - [ ] All specifics anchored or explicitly `[unverified]`
+- [ ] No reading the author didn't give stands outside an `[author's reading?]` marker;
+      every marker is resolved or left for the author, never silently dropped
 - [ ] Every in-text pointer to a section, table, or figure names one that exists
 - [ ] Countable exit checks run and counts reported
 - [ ] Other places in the project that need the same change (a fact, a name, a

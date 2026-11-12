@@ -88,7 +88,11 @@ editing, not for passing as them.
   scholars see the deposit as votive, others as a hoard" reports; "The
   deposit is more likely votive, since the coins were pierced before
   burial" argues. If the author's position is not in the notes, leave a
-  marked gap (`[author's reading?]`), never a neutral survey.
+  marked gap (`[author's reading?]`), never a neutral survey. A reading
+  you propose goes inside the marker, never in the prose:
+  `[author's reading? Proposal: poor visibility would understate the
+  pattern, not produce it]`. Deleting the marker then deletes the
+  proposal, so no argument the author didn't make survives an edit.
 - **Plain, data-forward, argued.** Put explicit logical connectives at
   sentence heads where the logic would otherwise be implicit ("Since…",
   "In response…", "Finally…"). A sequence of assertions reads as a
