@@ -28,15 +28,18 @@ No API keys required — uses free tiers and polite pool headers.
 """
 
 import argparse
+import base64
 import email.utils
 import json
 import logging
 import os
 import random
 import re
+import string
 import sys
 import threading
 import time
+import unicodedata
 import urllib.parse
 from collections.abc import Callable
 from typing import Any
@@ -84,12 +87,85 @@ DOI_RESOLVER = "https://doi.org"
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 OPENALEX_BASE = "https://api.openalex.org"
 
-#: Headers for the `doi-exists` lookup and the registration agency's record.
-#: The contact address is for the CrossRef and OpenAlex polite pools only
-#: (see `_resolve_mailto`), so these requests identify the tool and nobody
-#: else; no key is added to them either. They override the shared client's
-#: own User-Agent, which may carry the address.
+#: Headers for every request to doi.org: the `doi-exists` lookup, the
+#: CSL-JSON record, and the BibTeX fallback. The contact address is for the
+#: CrossRef and OpenAlex polite pools only (see `_resolve_mailto`), so these
+#: requests identify the tool and nobody else; no key is added to them
+#: either. They override the shared client's own User-Agent, which may carry
+#: the address.
 DOI_ORG_HEADERS = {"User-Agent": "lit-scout/1.0"}
+
+
+# ----------------------------------------------------------------------------
+# DOI names: how one is read from the input, and when two are the same
+# ----------------------------------------------------------------------------
+# Both rules follow the DOI Foundation's "DOI URI Scheme" specification
+# (doi:10.1000/292, 2024; read on 12 November 2026): chapter 2 for the
+# percent-encoded forms, chapter 3 for equivalence. Review finding R34,
+# follow-ups (0.3.1, GPT in Codex, lane astra): Unicode case folding made
+# different names equal, and a link's encoded name was encoded a second time.
+
+#: A DOI written as a doi.org link (https or http, with or without "dx.") or
+#: as a "doi:" URI, rather than as a bare name.
+_DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", re.IGNORECASE)
+
+#: Maps A-Z to a-z and leaves every other code point as it is.
+_BASIC_LATIN_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def _bare_doi(doi: str) -> str | None:
+    """
+    Return the DOI name that *doi* gives, unencoded, ready to be encoded once.
+
+    The input contract, shared by `doi-exists` and the CSL-JSON record read
+    through doi.org (`_agency_record`):
+
+    * A bare name, such as "10.1000/a#b", is the DOI name itself, raw. It is
+      never percent-decoded, since a literal percent sequence can be part of
+      a name: "10.1000/a%23b" is a different name from "10.1000/a#b".
+    * A doi.org link ("https://doi.org/...", "http://...", "dx.doi.org") or a
+      "doi:" URI carries the name percent-encoded, so everything after the
+      prefix is percent-decoded exactly once, as UTF-8:
+      "https://doi.org/10.1000/a%23b" and "doi:10.1000/a%23b" both give
+      10.1000/a#b. A character left unencoded in a link, such as a "#" in a
+      link pasted from a reference list, is kept as it stands.
+
+    Surrounding whitespace is removed first. The caller percent-encodes the
+    result once for its own request, so the name reaches doi.org whole.
+
+    Returns:
+        The DOI name, or None for a link or "doi:" URI whose percent-encoding
+        does not decode as UTF-8, which names no DOI that could be asked
+        about faithfully. Whether the name has the shape of a DOI is for the
+        caller to check.
+    """
+    text = doi.strip()
+    match = _DOI_PREFIX.match(text)
+    if match is None:
+        return text
+    try:
+        return urllib.parse.unquote(text[match.end():], errors="strict")
+    except UnicodeDecodeError:
+        return None
+
+
+def _doi_key(doi: str) -> str:
+    """
+    Return *doi* in the form in which two DOI names are compared for identity.
+
+    DOI names are case-insensitive only in the Basic Latin block (DOI URI
+    Scheme, chapter 3), so only A-Z become a-z, and every other code point
+    stays as it is. Unicode lower-casing or case folding would be too broad:
+    case folding makes "10.1000/straße" equal "10.1000/strasse", and both
+    make "Ä" equal "ä", which are different names. Nor is the name
+    normalised, since equivalence goes by code point.
+    """
+    return doi.translate(_BASIC_LATIN_LOWER)
+
+
+def _same_doi(first: str, second: str) -> bool:
+    """True if two DOI names are the same name (see `_doi_key`)."""
+    return _doi_key(first) == _doi_key(second)
 
 
 def _polite(params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -493,7 +569,10 @@ def _request_with_retry(
       * on 429 honours `Retry-After` (seconds or HTTP-date) when present,
         otherwise uses exponential backoff with jitter;
       * caps the number of attempts at MAX_RETRIES and any single sleep at
-        MAX_BACKOFF, so a call can never hang indefinitely;
+        MAX_BACKOFF. That bounds the retrying, not the call's duration: each
+        attempt is limited only by the client's timeouts, which apply to
+        each HTTP operation (connecting, and each read or write), not to an
+        attempt or the call as a whole, so there is no overall deadline;
       * after exhausting retries, returns the last response (so the caller's
         existing non-200 handling runs) or re-raises the last connection
         error (so the caller's existing `except httpx.HTTPError` runs).
@@ -924,9 +1003,26 @@ def _normalise_openalex(raw: dict) -> dict[str, Any]:
     }
 
 
-#: How a record read from the registering agency through doi.org is named in
-#: `source` and `sources`, so that a reader can see where it came from.
-AGENCY_SOURCE = "doi.org (registration agency)"
+#: How a CSL-JSON record read through doi.org is named in `source` and
+#: `sources`. It names the route, not the author of the record: doi.org
+#: normally hands such a request to the registering agency's service, but
+#: all the helper establishes is the address that answered, `record_url`
+#: (review finding R39, 0.3.1, GPT in Codex, lane astra; until then this
+#: said "doi.org (registration agency)").
+DOI_CSL_SOURCE = "doi.org (content negotiation)"
+
+#: What `doi_check` says about a CSL-JSON record's own DOI, in words.
+_DOI_CHECK_NOTES = {
+    "same": "the record names the DOI asked for",
+    "different": (
+        "the record names a different DOI, so it is a record of another identifier "
+        "and cannot establish the identity of the DOI asked for"
+    ),
+    "absent": (
+        "the record names no DOI, so nothing binds it to the DOI asked for: its "
+        "metadata stands, but it cannot establish identity on its own"
+    ),
+}
 
 
 def _csl_text(value: Any) -> str | None:
@@ -976,23 +1072,37 @@ def _csl_author_name(author: Any) -> str | None:
 
 def _normalise_csl(raw: dict, requested: str) -> dict[str, Any]:
     """
-    Normalise a CSL-JSON record from the agency that registered a DOI.
+    Normalise a CSL-JSON record read through doi.org's content negotiation.
 
-    doi.org hands a request for CSL-JSON to the registering agency's own
-    service (DataCite, mEDRA, JaLC, CrossRef, and others), so the record is
-    the registration itself, not an index's copy of it. It carries no
-    citation or reference counts, which stay None.
+    doi.org normally hands a request for CSL-JSON to the service of the
+    agency that registered the DOI (DataCite, mEDRA, JaLC, CrossRef, and
+    others). The helper establishes less than that: which address answered
+    (`record_url`, which `_agency_record` adds) and what the answer says, so
+    `source` names the route (`DOI_CSL_SOURCE`), not the agency. The record
+    carries no citation or reference counts, which stay None.
+
+    The record is bound to the DOI asked for only by the DOI it names itself
+    (review finding R39, 0.3.1). `doi` is that DOI as the record gives it,
+    or None, and is never filled in with the DOI asked for; `requested_doi`
+    is the DOI asked for; and `doi_check` compares the two by `_same_doi`:
+
+    * "same": the record names the DOI asked for (perhaps with A-Z in
+      another case, as DataCite writes a suffix in capitals);
+    * "different": it names another DOI, so it is a record of another
+      identifier, and cannot establish the identity of the DOI asked for;
+    * "absent": it names no DOI, so nothing binds it to the DOI asked for;
+      its metadata is kept, but it cannot establish identity on its own.
+
+    `doi_check_note` says the same in words.
 
     Args:
-        raw: the CSL-JSON object the agency returned.
+        raw: the CSL-JSON object that answered.
         requested: the DOI asked for, bare.
 
     Returns:
         A record in the same shape as the other normalisers', plus `venue`
-        (from `container-title`, else `publisher`) and `type` (the CSL item
-        type). `doi` is the DOI asked for when the record's own DOI differs
-        from it only in case (DataCite writes the suffix in capitals), and
-        the record's DOI otherwise, so that a different DOI stays visible.
+        (from `container-title`, else `publisher`), `type` (the CSL item
+        type), `requested_doi`, `doi_check`, and `doi_check_note`.
     """
     title = _csl_text(raw.get("title"))
     subtitle = _csl_text(raw.get("subtitle"))
@@ -1012,22 +1122,31 @@ def _normalise_csl(raw: dict, requested: str) -> dict[str, Any]:
     if isinstance(parts, list) and parts and isinstance(parts[0], list) and parts[0]:
         year = _parse_year(parts[0][0])
 
+    # The record's own DOI, kept apart from the DOI asked for, so that a
+    # value the helper supplied is never mistaken for one the record gave.
     record_doi = _csl_text(raw.get("DOI"))
-    if not record_doi or record_doi.casefold() == requested.casefold():
-        record_doi = requested
+    if record_doi is None:
+        doi_check = "absent"
+    elif _same_doi(record_doi, requested):
+        doi_check = "same"
+    else:
+        doi_check = "different"
 
     return {
         "title": title,
         "authors": authors,
         "year": year,
         "doi": record_doi,
+        "requested_doi": requested,
+        "doi_check": doi_check,
+        "doi_check_note": _DOI_CHECK_NOTES[doi_check],
         "openalex_id": None,
         "s2_id": None,
         "citation_count": None,
         "reference_count": None,
         "venue": _csl_text(raw.get("container-title")) or _csl_text(raw.get("publisher")),
         "type": _csl_text(raw.get("type")),
-        "source": AGENCY_SOURCE,
+        "source": DOI_CSL_SOURCE,
         "abstract": _csl_text(raw.get("abstract")),
     }
 
@@ -1104,8 +1223,9 @@ def _deduplicate(papers: list[dict]) -> list[dict]:
     sources rather than discarding one.
 
     Records without a DOI cannot be paired and are passed through
-    unchanged. Case is normalised before comparison; whitespace is
-    stripped — DOIs are case-insensitive per the DOI spec.
+    unchanged. Whitespace is stripped, and A-Z are matched to a-z before
+    comparison, since DOI names are case-insensitive in the Basic Latin
+    block only (see `_doi_key`); every other character must match exactly.
 
     Audit 2026-05-02 (D-M4): switched from "winner-takes-all" to merge.
     """
@@ -1113,7 +1233,7 @@ def _deduplicate(papers: list[dict]) -> list[dict]:
     no_doi: list[dict] = []
 
     for paper in papers:
-        doi = (paper.get("doi") or "").lower().strip()
+        doi = _doi_key((paper.get("doi") or "").strip())
         if not doi:
             no_doi.append(paper)
             continue
@@ -1135,38 +1255,50 @@ def _deduplicate(papers: list[dict]) -> list[dict]:
 
 #: The media type doi.org's content negotiation answers with CSL-JSON.
 DOI_CSL_ACCEPT = "application/vnd.citationstyles.csl+json"
-#: Finite timeouts for the agency's record: doi.org redirects to the agency.
+#: Timeouts for the CSL-JSON record, through doi.org's redirects: 10 s to
+#: connect, 30 s for each read, write, or wait for a pooled connection. They
+#: apply to each HTTP operation, not to the lookup as a whole: each redirect
+#: and each retry is timed afresh, so there is no overall deadline.
 DOI_CSL_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
 
 def _agency_record(doi: str, client: httpx.Client) -> dict | None:
     """
-    Read the registering agency's own record of *doi*, through doi.org.
+    Read a CSL-JSON record of *doi* through doi.org's content negotiation.
 
-    Asks `https://doi.org/<DOI>` for CSL-JSON, following redirects: doi.org
-    hands the request to the agency that registered the DOI (DataCite for
-    arXiv and Zenodo, mEDRA, JaLC, CrossRef, and others), which answers
-    from its registration. This covers a DOI that no index holds yet, such
-    as a deposit made the same day (Shawn's design, 11 November 2026: the
-    "is it the right target" check, through doi.org).
+    Asks `https://doi.org/<DOI>` for CSL-JSON, following redirects. doi.org
+    normally hands the request to the agency that registered the DOI
+    (DataCite for arXiv and Zenodo, mEDRA, JaLC, CrossRef, and others),
+    which answers from its registration. This covers a DOI that no index
+    holds yet, such as a deposit made the same day (Shawn's design, 11
+    November 2026: the "is it the right target" check, through doi.org).
+    What is established is only the address that gave the final answer,
+    kept as `record_url`, and what that answer says: neither the Accept
+    header nor a title in the answer proves that it is the agency's record
+    (review finding R39, 0.3.1).
 
-    The DOI is percent-encoded once for the path, keeping its `/`, as
-    `cmd_doi_exists` does. The request carries `DOI_ORG_HEADERS` and no key:
-    `_enforce_credential_scope` removes any Semantic Scholar key, on the
-    redirected requests too.
+    The DOI is read as `cmd_doi_exists` reads it (`_bare_doi`: a bare name
+    raw, a doi.org link or "doi:" URI decoded once), then percent-encoded
+    once for the path, keeping its `/`. The request carries
+    `DOI_ORG_HEADERS` and no key: `_enforce_credential_scope` removes any
+    Semantic Scholar key, on the redirected requests too. Cost: up to
+    `MAX_RETRIES` attempts, each followed through its redirects; timeouts
+    apply to each HTTP operation, not to the whole.
 
     Args:
-        doi: the DOI, bare or written as a doi.org link.
+        doi: the DOI: a bare name, raw, or a doi.org link or "doi:" URI,
+            percent-encoded (see `_bare_doi`).
         client: the shared client.
 
     Returns:
-        The normalised record (see `_normalise_csl`) with `record_url`, the
-        address the agency answered from; or None for something that is not
-        a DOI, an HTTP error status, no answer, a body that is not a JSON
-        object, or a record without a title.
+        The normalised record (see `_normalise_csl`, including how it is
+        bound to the DOI asked for) with `record_url`, the address of the
+        final answer; or None for something that is not a DOI, an HTTP
+        error status, no answer, a body that is not a JSON object, or a
+        record without a title.
     """
-    requested = _DOI_PREFIX.sub("", doi.strip())
-    if not requested.startswith("10.") or "/" not in requested:
+    requested = _bare_doi(doi)
+    if requested is None or not requested.startswith("10.") or "/" not in requested:
         return None
     url = f"{DOI_RESOLVER}/{urllib.parse.quote(requested, safe='/')}"
     headers = {**DOI_ORG_HEADERS, "Accept": DOI_CSL_ACCEPT}
@@ -1180,13 +1312,13 @@ def _agency_record(doi: str, client: httpx.Client) -> dict | None:
         )
     except httpx.HTTPError as exc:
         log.warning(
-            "doi.org: no answer for the registration agency's record of %s (%s)",
+            "doi.org: no answer for a CSL-JSON record of %s (%s)",
             requested, _redact(str(exc)) or type(exc).__name__,
         )
         return None
     if resp.status_code != 200:
         log.warning(
-            "doi.org: HTTP %d for the registration agency's record of %s",
+            "doi.org: HTTP %d for a CSL-JSON record of %s",
             resp.status_code, requested,
         )
         return None
@@ -1199,9 +1331,11 @@ def _agency_record(doi: str, client: httpx.Client) -> dict | None:
         return None
     record = _normalise_csl(raw, requested)
     if not record["title"]:
-        log.warning("doi.org: the agency's record of %s has no title", requested)
+        log.warning("doi.org: the CSL-JSON record of %s has no title", requested)
         return None
     record["record_url"] = _redact(str(resp.url))
+    if record["doi_check"] != "same":
+        log.warning("doi.org: the CSL-JSON record of %s: %s", requested, record["doi_check_note"])
     return record
 
 
@@ -1211,10 +1345,12 @@ def cmd_metadata(doi: str, client: httpx.Client) -> dict:
 
     Tries CrossRef first, then Semantic Scholar, then OpenAlex, and merges
     their results to produce the most complete record. When none of the
-    three holds a record, the registering agency's own record is read
-    through doi.org (`_agency_record`), with `source` and `sources` naming
-    it as `AGENCY_SOURCE`; it has no citation count. Only when that fails
-    too is the result "No metadata found".
+    three holds a record, a CSL-JSON record is read through doi.org's
+    content negotiation (`_agency_record`), with `source` and `sources`
+    naming that route as `DOI_CSL_SOURCE`, `record_url` the address that
+    answered, and `requested_doi`, `doi_check`, and `doi_check_note` saying
+    whether the record names the DOI asked for; it has no citation count.
+    Only when that fails too is the result "No metadata found".
     """
     results = []
 
@@ -1258,13 +1394,13 @@ def cmd_metadata(doi: str, client: httpx.Client) -> dict:
         results.append(record)
 
     if not results:
-        # No index holds the DOI (or none could be read): ask the agency
-        # that registered it, the last source.
+        # No index holds the DOI (or none could be read): ask doi.org, which
+        # normally hands the request to the agency that registered it.
         agency = _agency_record(doi, client)
         if agency is None:
             return {"error": f"No metadata found for DOI: {doi}"}
-        log.info("metadata: no index holds %s; read the registration agency's record", doi)
-        agency["sources"] = [AGENCY_SOURCE]
+        log.info("metadata: no index holds %s; read a CSL-JSON record through doi.org", doi)
+        agency["sources"] = [DOI_CSL_SOURCE]
         return agency
 
     # Merge: start with first result, fill gaps from subsequent.
@@ -1582,80 +1718,183 @@ def cmd_openalex_cited_by(
 # The DOI resolver's handle API answers for every registration agency
 # (CrossRef, DataCite, and the rest), so it is the one place that can say a
 # DOI does not exist; CrossRef answers 404 for every DOI it did not register.
-# Documented in the DOI Foundation's "DOI URI Scheme" (sections 2 and 4) and
+# Documented in the DOI Foundation's "DOI URI Scheme" (chapters 2 and 4) and
 # the Handle.Net proxy server's REST API: responseCode 1 with HTTP 200 is
 # found, 100 with HTTP 404 is not found, and 200 with HTTP 200 is a handle
-# with no values of the type asked for. The lookup asks for the URL values
-# only (`?type=URL`), since a DOI resolves only if its handle holds a URL to
-# send a reader to (Shawn's design, 11 November 2026). Checked live on 12
-# November 2026: `?type=URL` gave responseCode 1 with one URL value, at
-# `data.value`, for 10.5281/zenodo.24128012, and an unknown type gave
-# responseCode 200 with no values.
+# with no values of the type asked for.
+#
+# The lookup asks for the URL values only (`?type=URL`; Shawn's design, 11
+# November 2026). That can establish a URL value, but never that a DOI has
+# no way to resolve: the proxy also redirects through 10320/loc values and
+# follows HS_ALIAS values (Handle.Net proxy server documentation, read on 12
+# November 2026), and this lookup reads neither (review finding R38, 0.3.1,
+# GPT in Codex, lane astra). Nor does a URL value show that the page it
+# names is up, or what the page holds: the target is never fetched. Checked
+# live on 12 November 2026: `?type=URL` gave responseCode 1 with one URL
+# value, at `data.value`, for 10.5281/zenodo.24128012, and an unknown type
+# gave responseCode 200 with no values.
 DOI_HANDLE_API = f"{DOI_RESOLVER}/api/handles"
+#: Timeouts for the handle lookup: 10 s to connect, 15 s for each read,
+#: write, or wait for a pooled connection. They apply to each HTTP operation,
+#: not to the lookup as a whole, which `_request_with_retry` may also repeat,
+#: so there is no overall deadline.
 DOI_HANDLE_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 
-# Forms a DOI is sometimes written in; the handle API needs the bare DOI.
-_DOI_PREFIX = re.compile(r"^(?:https?://(?:dx\.)?doi\.org/|doi:)", re.IGNORECASE)
+
+#: The URL schemes a target may use.
+_TARGET_SCHEMES = frozenset({"http", "https"})
+#: Characters that RFC 3986 never allows unencoded anywhere in a URI.
+_NEVER_IN_A_URI = frozenset(' "<>\\^`{|}')
+#: Unicode categories refused in a target: control, format (such as a
+#: bidirectional override), and surrogate characters.
+_REFUSED_CATEGORIES = frozenset({"Cc", "Cf", "Cs"})
 
 
-def _handle_url_value(body: dict) -> str | None:
+def _handle_value_text(data: Any) -> str | None:
     """
-    Return the first URL a handle API answer holds, or None.
+    Return the text that a handle value's `data` holds, or None.
+
+    The proxy's REST API gives `data` as an object with a `format` and a
+    `value` (Handle.Net proxy server documentation, read on 12 November
+    2026): with "string", the value is the data as a UTF-8 string; with
+    "base64" or "hex", it encodes the data's bytes. Those three formats are
+    read, an encoded value only if it decodes, strictly, to UTF-8 text. Any
+    other format ("admin", "vlist", "site", or one not documented), a value
+    that is not a string, or an encoding that does not decode gives None: a
+    representation this check does not support, which says nothing about
+    whether the DOI can resolve.
+    """
+    if not isinstance(data, dict):
+        return None
+    form, value = data.get("format"), data.get("value")
+    if not isinstance(value, str):
+        return None
+    try:
+        if form == "string":
+            return value
+        if form == "base64":
+            raw = base64.b64decode(value, validate=True)
+        elif form == "hex":
+            raw = bytes.fromhex(value)
+        else:
+            return None
+        return raw.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):  # binascii.Error is a ValueError
+        return None
+
+
+def _usable_url(text: str) -> bool:
+    """
+    True if *text* is a well-formed absolute http or https URL.
+
+    This checks the text alone; nothing is fetched. Refused: whitespace
+    anywhere (surrounding whitespace included), a control, format, or
+    surrogate character, a character RFC 3986 never allows unencoded, a
+    scheme other than http or https, a relative reference, no host, and an
+    authority that does not parse (an unclosed IPv6 bracket, a port that is
+    not a number in range).
+    """
+    if not text or any(
+        ch.isspace() or ch in _NEVER_IN_A_URI
+        or unicodedata.category(ch) in _REFUSED_CATEGORIES
+        for ch in text
+    ):
+        return False
+    try:
+        parts = urllib.parse.urlsplit(text)
+        _ = parts.port  # raises ValueError for a malformed port
+    except ValueError:
+        return False
+    return parts.scheme in _TARGET_SCHEMES and bool(parts.hostname)
+
+
+def _handle_url_value(body: dict) -> tuple[str | None, int]:
+    """
+    Return the first usable URL value in a handle API answer, and a count.
 
     A usable value is an item of `values` whose `type` is `URL` and whose
-    `data.value` is a non-empty string.
+    `data` holds, in a supported representation (`_handle_value_text`), a
+    well-formed absolute http or https URL (`_usable_url`). It is returned
+    exactly as registered. Before 0.3.1's review finding R38, any non-empty
+    string passed, such as "not a URL".
+
+    Returns:
+        The URL or None, and how many values of type `URL` were read, so
+        the caller can tell a handle with no URL value from one whose URL
+        values this check cannot use.
     """
     values = body.get("values")
+    url_values = 0
     for value in values if isinstance(values, list) else []:
         if not isinstance(value, dict) or value.get("type") != "URL":
             continue
-        data = value.get("data")
-        target = data.get("value") if isinstance(data, dict) else None
-        if isinstance(target, str) and target.strip():
-            return target.strip()
-    return None
+        url_values += 1
+        text = _handle_value_text(value.get("data"))
+        if text is not None and _usable_url(text):
+            return text, url_values
+    return None, url_values
 
 
 def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
     """
-    Ask the DOI resolver whether *doi* resolves, as one of four states.
+    Ask the DOI resolver's handle API whether *doi* holds a usable URL value.
 
-    The returned dict's ``state`` is:
+    The returned dict's ``state`` is one of four:
 
-    * ``resolves``: the resolver holds the DOI with a URL to send a reader
-      to (HTTP 200, responseCode 1, and a ``URL`` value with a non-empty
-      string), returned as ``url``. Resolution only: whether the DOI
-      identifies the expected paper is a separate check, against a record
-      (``metadata``, whose last source is the registering agency's own).
-    * ``registered_no_url``: the handle exists but holds no URL, so the DOI
-      does not resolve (HTTP 200 with responseCode 200, which the handle
-      API gives for a handle with no value of the type asked for; or
-      responseCode 1 with no usable URL value). A real DOI with a broken
-      registration, not a fabrication.
+    * ``resolves``: the handle holds a usable URL value (HTTP 200,
+      responseCode 1, and a ``URL`` value that ``_handle_url_value``
+      accepts: a well-formed absolute http or https URL, in a supported
+      representation), returned as ``url``. Registration evidence only: the
+      target is not fetched, so whether its page is up, and what it holds,
+      are not checked. Nor is identity: whether the DOI names the expected
+      work is a separate check, against a record (``metadata``).
+    * ``registered_no_url``: the handle exists, but this check established
+      no supported URL value: HTTP 200 with responseCode 200, which the
+      handle API gives for a handle with no value of the type asked for, or
+      responseCode 1 with no URL value that ``_handle_url_value`` accepts.
+      Not evidence that the DOI cannot resolve, since the handle may
+      redirect in a way this lookup does not read (a 10320/loc value, an
+      alias); an undetermined result for a real DOI, not a fabrication.
     * ``not_found``: the resolver answered, for exactly this DOI, that it
       does not exist (HTTP 404, responseCode 100). The only authoritative
       negative.
-    * ``unverifiable``: anything else, which says nothing about the DOI: no
-      answer, a rate limit, a server error, a redirect, a body that is not
-      the handle API's JSON, an answer about a different identifier, or an
-      unexpected pairing of status and responseCode.
+    * ``unverifiable``: anything else, which says nothing about the DOI:
+      input that is not a DOI, no answer, a rate limit, a server error, a
+      redirect, a body that is not the handle API's JSON, an answer about a
+      different identifier, or an unexpected pairing of status and
+      responseCode.
 
-    The DOI is percent-encoded once for the path, keeping its ``/``, so a
+    Input (see ``_bare_doi``): a bare DOI name is taken raw, as written, and
+    is never percent-decoded, so a literal ``%23`` stays part of the name; a
+    doi.org link (``https://doi.org/``, ``http://``, ``dx.``) or a ``doi:``
+    URI carries the name percent-encoded, and is decoded exactly once. The
+    returned ``doi`` is the name that was asked about.
+
+    The name is percent-encoded once for the path, keeping its ``/``, so a
     suffix holding ``#``, ``?`` or ``%`` reaches the resolver whole; the
     query, ``?type=URL``, follows the encoded path. The resolver echoes the
-    handle it looked up, and an answer counts only if the echo matches the
-    DOI asked for (without regard to case, since DOIs are case-insensitive).
-    The request carries ``DOI_ORG_HEADERS`` and no key.
+    handle it looked up, and an answer counts only if the echo is the same
+    DOI name as the one asked for: A-Z match a-z, and every other character
+    must match exactly, since DOI names are case-insensitive only in the
+    Basic Latin block (``_same_doi``). The request carries
+    ``DOI_ORG_HEADERS`` and no key.
+
+    Cost: one logical lookup, of up to ``MAX_RETRIES`` attempts (four by
+    default) through ``_request_with_retry``, not one network request. Its
+    timeouts apply to each HTTP operation, not to the lookup as a whole.
     """
-    requested = _DOI_PREFIX.sub("", doi.strip())
+    requested = _bare_doi(doi)
     result: dict[str, Any] = {
-        "doi": requested,
+        "doi": doi.strip() if requested is None else requested,
         "state": "unverifiable",
         "url": None,
         "http_status": None,
         "response_code": None,
         "reason": "",
     }
+    if requested is None:
+        result["reason"] = "the link's percent-encoding does not decode as UTF-8"
+        return result
     if not requested.startswith("10.") or "/" not in requested:
         result["reason"] = "not a DOI (expected 10.<prefix>/<suffix>)"
         return result
@@ -1695,20 +1934,33 @@ def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
         code = None
     result["response_code"] = code
     echoed = body.get("handle")
-    if not isinstance(echoed, str) or echoed.casefold() != requested.casefold():
+    if not isinstance(echoed, str) or not _same_doi(echoed, requested):
         result["reason"] = f"the answer is about a different identifier ({echoed!r})"
         return result
 
-    no_url = "the DOI is registered, but its handle holds no URL, so it does not resolve"
+    # Neither reason claims more than this lookup read: it asks for URL
+    # values only, and never fetches a target.
+    no_url = (
+        "the DOI is registered, but this check established no supported URL value: "
+        "the handle gave no value of type URL (this lookup does not read 10320/loc "
+        "or alias values)"
+    )
     if (status, code) == (200, 1):
-        target = _handle_url_value(body)
+        target, url_values = _handle_url_value(body)
         if target is not None:
             result["state"] = "resolves"
             result["url"] = target
-            result["reason"] = "the resolver holds this DOI, with a URL to resolve to"
+            result["reason"] = (
+                "the handle holds a URL value, an absolute http or https URL: "
+                "registration evidence only, since the target was not fetched"
+            )
         else:
             result["state"] = "registered_no_url"
-            result["reason"] = no_url
+            result["reason"] = no_url if not url_values else (
+                "the DOI is registered, but this check established no supported URL "
+                f"value: none of its {url_values} URL value(s) is an absolute http or "
+                "https URL in a supported representation (format string, base64, or hex)"
+            )
     elif (status, code) == (200, 200):
         result["state"] = "registered_no_url"
         result["reason"] = no_url
@@ -1889,19 +2141,24 @@ def _fetch_bibtex_record(
     # The resolver forwards to whichever registry holds the DOI (DataCite
     # for arXiv and Zenodo, among others).
     resolver = f"{DOI_RESOLVER}/{urllib.parse.quote(doi, safe='/')}"
+    # CrossRef keeps the caller's headers, whose User-Agent may carry the
+    # polite-pool contact address. The resolver leg, and every hop of its
+    # redirects, identifies the tool alone, as the other doi.org requests do
+    # (review of 9f57dc2, 0.3.1, GPT in Codex, lane astra).
+    resolver_headers = {**headers, **DOI_ORG_HEADERS}
     sources = (
-        ("CrossRef", crossref, "crossref", False),
-        ("doi.org", resolver, "doi.org", True),
+        ("CrossRef", crossref, "crossref", headers, False),
+        ("doi.org", resolver, "doi.org", resolver_headers, True),
     )
     reasons: list[str] = []
-    for label, url, source, follow in sources:
+    for label, url, source, leg_headers, follow in sources:
         try:
             if follow:
-                def request(u: str = url) -> httpx.Response:
-                    return client.get(u, headers=headers, follow_redirects=True)
+                def request(u: str = url, h: dict[str, str] = leg_headers) -> httpx.Response:
+                    return client.get(u, headers=h, follow_redirects=True)
             else:
-                def request(u: str = url) -> httpx.Response:
-                    return client.get(u, headers=headers)
+                def request(u: str = url, h: dict[str, str] = leg_headers) -> httpx.Response:
+                    return client.get(u, headers=h)
             resp = _request_with_retry(request, host=_host_of(url), source=source)
         except httpx.HTTPError as exc:
             reasons.append(f"{label}: " + _redact(str(exc)).replace("\n", " "))
@@ -2047,9 +2304,13 @@ def main() -> None:
     # doi-exists
     p_exists = subparsers.add_parser(
         "doi-exists",
-        help="Ask the DOI resolver whether a DOI resolves (has a URL), in any registry",
+        help="Ask the DOI resolver whether a DOI holds a usable URL value, in any registry",
     )
-    p_exists.add_argument("doi", help="DOI to look up, unencoded")
+    p_exists.add_argument(
+        "doi",
+        help="DOI to look up: a bare name, unencoded, or a doi.org link or doi: URI, "
+        "percent-encoded",
+    )
 
     # bibtex
     p_bib = subparsers.add_parser(

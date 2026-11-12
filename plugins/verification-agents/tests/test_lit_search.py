@@ -5,8 +5,10 @@ Tests the parsing, normalisation, deduplication, and fallback logic
 using mocked HTTP responses. Does not hit real APIs.
 """
 
+import base64
 import json
 import sys
+import urllib.parse
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -257,6 +259,15 @@ class TestDeduplication:
         ]
         result = lit_search._deduplicate(papers)
         assert len(result) == 1
+
+    def test_case_outside_basic_latin_keeps_dois_apart(self):
+        """DOI URI Scheme, chapter 3: only A-Z match a-z; "Ä" and "ä" are two names."""
+        papers = [
+            {"doi": "10.1234/Ä", "title": "Paper A", "source": "crossref"},
+            {"doi": "10.1234/ä", "title": "Paper B", "source": "s2"},
+        ]
+        result = lit_search._deduplicate(papers)
+        assert [paper["title"] for paper in result] == ["Paper A", "Paper B"]
 
 
 # ============================================================================
@@ -1808,6 +1819,55 @@ class TestBibtexBeyondCrossref:
         assert resolver_call.kwargs["follow_redirects"] is True
         assert resolver_call.kwargs["headers"]["Accept"] == "application/x-bibtex"
 
+    def test_the_resolver_leg_carries_no_contact_or_key_at_any_hop(
+        self, monkeypatch, no_delays
+    ):
+        """Review of 9f57dc2: the doi.org leg identifies the tool alone, at every redirect.
+
+        CrossRef keeps the polite-pool contact address. Before, the resolver
+        leg reused CrossRef's headers, so the address went to doi.org and on
+        to wherever it redirected.
+        """
+        polite = "lit-scout/1.0 (mailto:someone@example.org)"
+        monkeypatch.setattr(lit_search, "USER_AGENT", polite)
+        monkeypatch.setattr(lit_search, "S2_API_KEY", "synthetic-s2-key-not-a-secret")
+        monkeypatch.setattr(lit_search, "OPENALEX_API_KEY", SYNTHETIC_KEY)
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            host = request.url.host
+            if host == lit_search.CROSSREF_HOST:
+                return httpx.Response(404)
+            if host == "doi.org":
+                location = "https://data.crosscite.org/" + request.url.raw_path.decode()[1:]
+                return httpx.Response(302, headers={"Location": location})
+            if host == "data.crosscite.org":
+                location = "https://api.datacite.org" + request.url.raw_path.decode()
+                return httpx.Response(303, headers={"Location": location})
+            if host == "api.datacite.org":
+                return httpx.Response(200, text="@misc{Synthetic_2026, title={A record}}")
+            raise AssertionError(f"unexpected request: {request.url}")
+
+        client = httpx.Client(
+            transport=httpx.MockTransport(handler),
+            headers={"User-Agent": polite, "x-api-key": "synthetic-s2-key-not-a-secret"},
+            event_hooks={"request": [lit_search._enforce_credential_scope]},
+        )
+        result = lit_search.cmd_bibtex(["10.5281/zenodo.24128012"], client)
+        assert "Synthetic_2026" in result and "FAILED" not in result
+        assert [r.url.host for r in seen] == [
+            lit_search.CROSSREF_HOST, "doi.org", "data.crosscite.org", "api.datacite.org",
+        ]
+        assert seen[0].headers["user-agent"] == polite
+        for hop in seen[1:]:
+            assert hop.headers["user-agent"] == "lit-scout/1.0", hop.url
+            assert "mailto" not in hop.headers["user-agent"]
+            assert "x-api-key" not in hop.headers
+            assert b"api_key" not in hop.url.query and b"mailto" not in hop.url.query
+            assert SYNTHETIC_KEY not in str(hop.url)
+            assert hop.headers["accept"] == "application/x-bibtex"
+
     @patch.object(lit_search, "_rate_limit")
     def test_the_resolver_is_not_asked_when_crossref_answers(self, mock_rl):
         client = self._client({lit_search.CROSSREF_BASE: (200, SAMPLE_BIBTEX)})
@@ -2042,6 +2102,27 @@ class TestDoiExists:
             ],
         }
 
+    @staticmethod
+    def _catalogue(names, seen):
+        """
+        A client acting as a handle API that holds exactly the DOI names in `names`.
+
+        Like the resolver, it percent-decodes the request's path once and
+        answers about the name it decoded: found, with a URL, if `names`
+        holds it, and otherwise not found, echoing that name. Every request
+        is appended to `seen`.
+        """
+
+        def handler(request):
+            seen.append(request)
+            path = request.url.raw_path.split(b"?", 1)[0].decode("ascii")
+            name = urllib.parse.unquote(path.removeprefix("/api/handles/"), errors="strict")
+            if name in names:
+                return httpx.Response(200, json=TestDoiExists._with_url(name))
+            return httpx.Response(404, json={"responseCode": 100, "handle": name})
+
+        return _client_on(handler)
+
     def test_an_arxiv_doi_crossref_lacks_resolves_at_the_resolver(self, reset_pacing):
         doi = "10.48550/arXiv.2303.08774"
         seen = []
@@ -2080,13 +2161,19 @@ class TestDoiExists:
     def test_a_handle_with_no_url_value_is_registered_but_does_not_resolve(
         self, reset_pacing
     ):
-        """responseCode 200: the handle exists but holds no value of the type asked for."""
+        """responseCode 200: the handle exists but holds no value of the type asked for.
+
+        Review finding R38: the reason claims no more than the lookup read. A
+        `?type=URL` lookup cannot show that the DOI has no way to resolve.
+        """
         doi = "10.1000/empty"
         client = self._answering(200, {"responseCode": 200, "handle": doi, "values": []})
         result = lit_search.cmd_doi_exists(doi, client)
         assert result["state"] == "registered_no_url" and result["url"] is None
         assert (result["http_status"], result["response_code"]) == (200, 200)
-        assert "does not resolve" in result["reason"]
+        assert "no supported URL value" in result["reason"]
+        assert "10320/loc" in result["reason"]
+        assert "does not resolve" not in result["reason"]
 
     @pytest.mark.parametrize(
         "values",
@@ -2111,6 +2198,96 @@ class TestDoiExists:
             body["values"] = values
         result = lit_search.cmd_doi_exists(doi, self._answering(200, body))
         assert result["state"] == "registered_no_url" and result["url"] is None
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {"format": "string", "value": "not a URL"},
+            {"format": "string", "value": "/a/relative/path"},
+            {"format": "string", "value": "//host.example/no-scheme"},
+            {"format": "string", "value": "ftp://files.example.org/x"},
+            {"format": "string", "value": "javascript:alert(1)"},
+            {"format": "string", "value": "https://"},
+            {"format": "string", "value": "https://[::1/unclosed"},
+            {"format": "string", "value": "https://host.example:99999/"},
+            {"format": "string", "value": "https://host.example/a b"},
+            {"format": "string", "value": " https://host.example/"},
+            {"format": "string", "value": "https://host.example/\x00"},
+            {"format": "string", "value": "https://host.example/‮gpj.exe"},
+            {"format": "string", "value": "https://host.example/<x>"},
+            {"format": "base64", "value": base64.b64encode(b"not a URL").decode()},
+            {"format": "base64", "value": "%%% not base64"},
+            {"format": "hex", "value": "zz"},
+            {"format": "hex", "value": "ff"},
+            {"format": "admin", "value": "https://host.example/"},
+            {"format": "rot13", "value": "uggcf://ubfg.rknzcyr/"},
+            {"value": "https://host.example/"},
+        ],
+        ids=[
+            "arbitrary-text", "relative", "no-scheme", "ftp", "javascript", "no-host",
+            "unclosed-bracket", "bad-port", "space", "surrounding-space", "control",
+            "bidi-override", "rfc3986-forbidden", "base64-arbitrary-text", "bad-base64",
+            "bad-hex", "hex-not-utf8", "admin-format", "undocumented-format", "no-format",
+        ],
+    )
+    def test_a_url_value_this_check_cannot_use_never_resolves(self, reset_pacing, data):
+        """Review finding R38: the representation is validated before it is read.
+
+        Before, any non-empty string passed, whatever `data.format` said. An
+        unusable value is still no authoritative absence: `registered_no_url`,
+        which the verifier keeps as unverifiable.
+        """
+        doi = "10.1000/odd-url"
+        body = {"responseCode": 1, "handle": doi, "values": [
+            {"index": 1, "type": "URL", "data": data},
+        ]}
+        result = lit_search.cmd_doi_exists(doi, self._answering(200, body))
+        assert result["state"] == "registered_no_url" and result["url"] is None
+        assert "no supported URL value" in result["reason"]
+        assert "none of its 1 URL value(s)" in result["reason"]
+
+    @pytest.mark.parametrize(
+        ("data", "url"),
+        [
+            (
+                {"format": "string", "value": "https://zenodo.org/doi/10.5281/zenodo.24128012"},
+                "https://zenodo.org/doi/10.5281/zenodo.24128012",
+            ),
+            ({"format": "string", "value": "http://h.example/a?b=c#d"}, "http://h.example/a?b=c#d"),
+            ({"format": "string", "value": "HTTPS://H.Example/P"}, "HTTPS://H.Example/P"),
+            (
+                {"format": "string", "value": "https://[2001:db8::1]:8443/x"},
+                "https://[2001:db8::1]:8443/x",
+            ),
+            ({"format": "string", "value": "https://bücher.example/ä"}, "https://bücher.example/ä"),
+            (
+                {"format": "base64", "value": base64.b64encode(b"https://h.example/b64").decode()},
+                "https://h.example/b64",
+            ),
+            ({"format": "hex", "value": b"https://h.example/hex".hex()}, "https://h.example/hex"),
+        ],
+        ids=["zenodo", "query-fragment", "upper-case", "ipv6-port", "iri", "base64", "hex"],
+    )
+    def test_a_well_formed_url_value_resolves(self, reset_pacing, data, url):
+        """Documented string, base64, and hex values, decoded; the target is never fetched."""
+        doi = "10.1000/good-url"
+        seen = []
+        body = {"responseCode": 1, "handle": doi, "values": [
+            {"index": 1, "type": "URL", "data": data},
+        ]}
+        result = lit_search.cmd_doi_exists(doi, self._answering(200, body, seen))
+        assert result["state"] == "resolves" and result["url"] == url
+        assert "registration evidence only" in result["reason"]
+        assert len(seen) == 1 and seen[0].url.host == "doi.org"
+
+    def test_an_unusable_url_value_gives_way_to_a_usable_one(self, reset_pacing):
+        doi = "10.1000/two-urls"
+        body = {"responseCode": 1, "handle": doi, "values": [
+            {"index": 1, "type": "URL", "data": {"format": "string", "value": "not a URL"}},
+            {"index": 2, "type": "URL", "data": {"format": "string", "value": "https://h.example/"}},
+        ]}
+        result = lit_search.cmd_doi_exists(doi, self._answering(200, body))
+        assert result["state"] == "resolves" and result["url"] == "https://h.example/"
 
     @pytest.mark.parametrize("body", ["<html>Not found</html>", "", ["a", "list"]])
     def test_a_body_that_is_not_the_handle_json_is_unverifiable(self, reset_pacing, body):
@@ -2139,6 +2316,31 @@ class TestDoiExists:
         result = lit_search.cmd_doi_exists("10.48550/arXiv.2303.08774", client)
         assert result["state"] == "resolves"
 
+    @pytest.mark.parametrize(
+        ("asked", "echoed"),
+        [
+            ("10.1000/straße", "10.1000/strasse"),  # Unicode case folding: ß is ss
+            ("10.1000/Ä", "10.1000/ä"),  # case outside the Basic Latin block
+            ("10.1000/ä", "10.1000/Ä"),
+            ("10.1000/k", "10.1000/K"),  # KELVIN SIGN, whose lower case is k
+        ],
+        ids=["sharp-s", "upper-umlaut", "lower-umlaut", "kelvin-sign"],
+    )
+    def test_case_is_ignored_in_the_basic_latin_block_only(self, reset_pacing, asked, echoed):
+        """Review R34 follow-up: a not-found answer for a different name is no negative.
+
+        DOI URI Scheme, chapter 3: DOI names are case-insensitive only in the
+        Basic Latin block, so only A-Z match a-z.
+        """
+        client = self._answering(404, {"responseCode": 100, "handle": echoed})
+        result = lit_search.cmd_doi_exists(asked, client)
+        assert result["state"] == "unverifiable"
+        assert "different identifier" in result["reason"]
+
+    def test_basic_latin_case_is_ignored_beside_other_letters(self, reset_pacing):
+        client = self._answering(200, self._with_url("10.1000/ÄBC"))
+        assert lit_search.cmd_doi_exists("10.1000/Äbc", client)["state"] == "resolves"
+
     def test_reserved_characters_reach_the_resolver_whole(self, reset_pacing):
         doi = "10.1000/a#b?c=d%e f"
         seen = []
@@ -2149,6 +2351,54 @@ class TestDoiExists:
         )
         assert seen[0].url.query == b"type=URL"
         assert result["state"] == "not_found"
+
+    @pytest.mark.parametrize(
+        "given",
+        [
+            "https://doi.org/10.1000/a%23b",
+            "http://dx.doi.org/10.1000/a%23b",
+            "doi:10.1000/a%23b",
+            "DOI:10.1000/a%23b",
+        ],
+    )
+    def test_an_encoded_link_or_doi_uri_is_decoded_once(self, reset_pacing, given):
+        """Review R34 follow-up: a link's "%23" is an encoded "#", not a literal percent.
+
+        Before, the payload was taken as a raw name and sent as "a%2523b", and
+        the not-found answer for that different name was accepted.
+        """
+        seen = []
+        result = lit_search.cmd_doi_exists(given, self._catalogue({"10.1000/a#b"}, seen))
+        assert result["state"] == "resolves" and result["doi"] == "10.1000/a#b"
+        assert [r.url.raw_path for r in seen] == [b"/api/handles/10.1000/a%23b?type=URL"]
+
+    def test_a_link_is_decoded_exactly_once(self, reset_pacing):
+        """An encoded literal percent ("%2523") in a link stays a literal percent."""
+        seen = []
+        client = self._catalogue({"10.1000/a%23b"}, seen)
+        result = lit_search.cmd_doi_exists("https://doi.org/10.1000/a%2523b", client)
+        assert result["state"] == "resolves" and result["doi"] == "10.1000/a%23b"
+        assert seen[0].url.raw_path == b"/api/handles/10.1000/a%2523b?type=URL"
+
+    def test_a_bare_name_with_a_literal_percent_is_never_decoded(self, reset_pacing):
+        """A bare name is raw: its "%23" is part of the name, not an encoded "#"."""
+        seen = []
+        client = self._catalogue({"10.1000/a#b"}, seen)
+        result = lit_search.cmd_doi_exists("10.1000/a%23b", client)
+        assert result["doi"] == "10.1000/a%23b"
+        assert seen[0].url.raw_path == b"/api/handles/10.1000/a%2523b?type=URL"
+        assert result["state"] == "not_found"
+
+    def test_a_link_whose_encoding_is_not_utf8_is_never_looked_up(self, reset_pacing):
+        """A link's "%FF" is not UTF-8, so the link names no DOI to ask about.
+
+        Decoding it with replacement would ask about a name holding U+FFFD.
+        """
+        seen = []
+        client = self._catalogue({"10.1000/a�b"}, seen)
+        result = lit_search.cmd_doi_exists("https://doi.org/10.1000/a%FFb", client)
+        assert result["state"] == "unverifiable" and seen == []
+        assert "UTF-8" in result["reason"]
 
     def test_a_doi_written_as_a_link_is_looked_up_bare(self, reset_pacing):
         seen = []
@@ -2288,7 +2538,7 @@ def _agency_client(agency, seen, indexes=None, **client_options):
 
 
 class TestAgencyRecordFallback:
-    """`metadata` reads the registering agency's record when no index holds one."""
+    """`metadata` reads a CSL-JSON record through doi.org when no index holds one."""
 
     def test_the_agency_is_asked_when_no_index_has_a_record(self, no_delays):
         seen = []
@@ -2301,14 +2551,45 @@ class TestAgencyRecordFallback:
         assert result["title"] == "A synthetic deposit no index holds yet"
         assert result["authors"] == ["Synthetic, Author A."]
         assert result["year"] == 2026
-        assert result["doi"] == "10.5281/zenodo.24128012"
+        # The record's own DOI as it gave it, kept apart from the DOI asked for.
+        assert result["doi"] == "10.5281/ZENODO.24128012"
+        assert result["requested_doi"] == "10.5281/zenodo.24128012"
+        assert result["doi_check"] == "same"
         assert result["venue"] == "Zenodo"
         assert result["type"] == "article-journal"
-        assert result["source"] == lit_search.AGENCY_SOURCE == "doi.org (registration agency)"
-        assert result["sources"] == [lit_search.AGENCY_SOURCE]
+        assert result["source"] == lit_search.DOI_CSL_SOURCE == "doi.org (content negotiation)"
+        assert result["sources"] == [lit_search.DOI_CSL_SOURCE]
         assert result["citation_count"] is None and result["reference_count"] is None
-        assert result["record_url"].startswith("https://data.crosscite.org/")
+        # The address that gave the final answer, not the one first asked.
+        assert result["record_url"] == "https://data.crosscite.org/10.5281/zenodo.24128012"
         assert "error" not in result
+
+    def test_a_record_naming_another_doi_cannot_establish_identity(self, no_delays):
+        """Review finding R39: an identical bibliography under a different DOI.
+
+        The record's title, authors, and year match the expected work, but
+        it names another DOI, so it is a record of another identifier.
+        """
+        seen = []
+        agency = {**DATACITE_CSL, "DOI": "10.5281/zenodo.99999999"}
+        result = lit_search.cmd_metadata("10.5281/zenodo.24128012", _agency_client(agency, seen))
+        assert result["title"] == "A synthetic deposit no index holds yet"
+        assert result["authors"] == ["Synthetic, Author A."] and result["year"] == 2026
+        assert result["doi"] == "10.5281/zenodo.99999999"
+        assert result["requested_doi"] == "10.5281/zenodo.24128012"
+        assert result["doi_check"] == "different"
+        assert "cannot establish" in result["doi_check_note"]
+
+    def test_a_record_naming_no_doi_keeps_its_metadata_but_is_not_bound(self, no_delays):
+        """Review finding R39: the DOI asked for is never put in the record's place."""
+        seen = []
+        agency = {k: v for k, v in DATACITE_CSL.items() if k != "DOI"}
+        result = lit_search.cmd_metadata("10.5281/zenodo.24128012", _agency_client(agency, seen))
+        assert result["title"] == "A synthetic deposit no index holds yet"
+        assert result["doi"] is None
+        assert result["requested_doi"] == "10.5281/zenodo.24128012"
+        assert result["doi_check"] == "absent"
+        assert "cannot establish identity" in result["doi_check_note"]
 
     def test_the_agency_is_not_asked_when_an_index_has_a_record(self, no_delays):
         seen = []
@@ -2335,7 +2616,7 @@ class TestAgencyRecordFallback:
             },
         )
         result = lit_search.cmd_metadata("10.1000/a#b", client)
-        assert result["source"] == lit_search.AGENCY_SOURCE
+        assert result["source"] == lit_search.DOI_CSL_SOURCE
         agency_requests = [r for r in seen if r.url.host not in INDEX_HOSTS]
         assert [r.url.host for r in agency_requests] == ["doi.org", "data.crosscite.org"]
         # Encoded once for the path, keeping "/": the "#" reaches doi.org.
@@ -2348,6 +2629,26 @@ class TestAgencyRecordFallback:
             assert b"mailto" not in request.url.query
         timeout = agency_requests[0].extensions["timeout"]
         assert timeout["connect"] == 10.0 and timeout["read"] == 30.0
+
+    @pytest.mark.parametrize("given", ["https://doi.org/10.1000/a%23b", "doi:10.1000/a%23b"])
+    def test_an_encoded_link_is_decoded_once_for_the_agency(self, no_delays, given):
+        """Review R34 follow-up: the fallback reads its input as `doi-exists` does."""
+        seen = []
+        agency = {**DATACITE_CSL, "DOI": "10.1000/A#B"}
+        result = lit_search.cmd_metadata(given, _agency_client(agency, seen))
+        assert [r.url.raw_path for r in seen if r.url.host == "doi.org"] == [b"/10.1000/a%23b"]
+        assert result["source"] == lit_search.DOI_CSL_SOURCE
+        assert result["requested_doi"] == "10.1000/a#b"
+        # The record's capitals differ only in A-Z, so it names the DOI asked for.
+        assert result["doi"] == "10.1000/A#B" and result["doi_check"] == "same"
+
+    def test_a_link_whose_encoding_is_not_utf8_is_not_sent_to_doi_org(self, no_delays):
+        seen = []
+        result = lit_search.cmd_metadata(
+            "https://doi.org/10.1000/a%FFb", _agency_client(DATACITE_CSL, seen)
+        )
+        assert "error" in result
+        assert all(r.url.host in INDEX_HOSTS for r in seen)
 
     @pytest.mark.parametrize(
         "agency",
@@ -2445,16 +2746,32 @@ class TestNormaliseCsl:
         )
         assert lit_search._normalise_csl({"title": "T"}, "10.1/x")["venue"] is None
 
-    def test_a_doi_differing_only_in_case_is_given_as_asked(self):
+    def test_a_doi_differing_only_in_basic_latin_case_is_the_same(self):
         record = lit_search._normalise_csl(DATACITE_CSL, "10.5281/zenodo.24128012")
-        assert record["doi"] == "10.5281/zenodo.24128012"
+        assert record["doi"] == "10.5281/ZENODO.24128012"
+        assert record["requested_doi"] == "10.5281/zenodo.24128012"
+        assert record["doi_check"] == "same"
 
     def test_a_different_doi_in_the_record_stays_visible(self):
         record = lit_search._normalise_csl({"title": "T", "DOI": "10.9/other"}, "10.1/x")
-        assert record["doi"] == "10.9/other"
+        assert record["doi"] == "10.9/other" and record["requested_doi"] == "10.1/x"
+        assert record["doi_check"] == "different"
 
-    def test_a_record_without_its_own_doi_takes_the_doi_asked_for(self):
-        assert lit_search._normalise_csl({"title": "T"}, "10.1/x")["doi"] == "10.1/x"
+    @pytest.mark.parametrize(
+        ("record_doi", "asked"),
+        [("10.1000/Ä", "10.1000/ä"), ("10.1000/STRASSE", "10.1000/straße")],
+        ids=["umlaut", "sharp-s"],
+    )
+    def test_a_doi_differing_beyond_basic_latin_case_stays_visible(self, record_doi, asked):
+        """Review R34 follow-up: only A-Z match a-z, so these are different DOIs."""
+        record = lit_search._normalise_csl({"title": "T", "DOI": record_doi}, asked)
+        assert record["doi"] == record_doi and record["doi_check"] == "different"
+
+    def test_a_record_without_its_own_doi_is_not_given_the_doi_asked_for(self):
+        """Review finding R39: a supplied DOI must not pass for one the record gave."""
+        record = lit_search._normalise_csl({"title": "T"}, "10.1/x")
+        assert record["doi"] is None and record["requested_doi"] == "10.1/x"
+        assert record["doi_check"] == "absent"
 
     def test_a_subtitle_is_joined_to_the_title(self):
         raw = {"title": "Main title", "subtitle": ["A subtitle"]}
@@ -2464,5 +2781,5 @@ class TestNormaliseCsl:
         record = lit_search._normalise_csl(DATACITE_CSL, "10.5281/zenodo.24128012")
         crossref_shape = lit_search._normalise_crossref(CROSSREF_WORK["message"])
         assert set(crossref_shape) <= set(record)
-        assert record["source"] == lit_search.AGENCY_SOURCE
+        assert record["source"] == lit_search.DOI_CSL_SOURCE
         assert record["citation_count"] is None
