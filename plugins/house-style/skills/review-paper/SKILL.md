@@ -212,14 +212,17 @@ where reviews are written (`calibration-*.md`). Consider only records for
 the current panel script (its SHA-256, `sha256sum
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-paper.mjs`, since the stance
 preambles and the calibration lens live there) and the model requested.
-Calibration holds only if the most recent of those is a **pass** of
-both halves of the test below. A
-later failure, no such record, or an order that can't be told leaves it
-unresolved; records for another script or model count neither way. So,
-for the same script and model, a pass then a later fail is unresolved
-and a fail then a later pass is calibrated; a fail for an older script
-then a pass for the current one is calibrated. If unresolved, tell the
-author, and offer a fresh test. The test is a run like any other, through Step 2's
+Calibration holds only if two records are a **pass** of both halves of
+the test below: the newest applicable record overall, and the newest
+applicable record of a held-out test (one whose sections played no part
+in diagnosing or fixing the guard). A diagnostic pass can't stand in for
+a missing, failed, or ambiguously ordered held-out result. No such
+record, or an order that can't be told, leaves it unresolved; records
+for another script or model count neither way. So, for the same script
+and model: a held-out pass then a later failure is unresolved; a failure
+then a later held-out pass is calibrated; and a held-out pass, then a
+held-out failure, then a diagnostic pass is unresolved. If unresolved,
+tell the author, and offer a fresh test. The test is a run like any other, through Step 2's
 cost gate; never start it just because a record is missing. If the
 author declines, label every adversarial finding about hedging in the
 report as uncalibrated.
@@ -237,10 +240,9 @@ limitation the text openly acknowledges. It passes if at least one
 finding identifies that defect and the meta-reviewer does not dismiss it
 on hedging or acknowledgement grounds. **Fail (either half):** say that
 the plugin's guard needs fixing, and treat hedging findings as
-uncalibrated until a later version passes both. **A section used to
-diagnose or fix the guard can't confirm the fix:** a pass on it counts
-only once the same script and model also pass on a section that played
-no part in the fix.
+uncalibrated until a later version passes both. A section used to
+diagnose or fix the guard can't confirm the fix (see the selection rule
+above).
 Record which sections a test used, and whether each was held out.
 Record each test in a file of its own,
 separate from any review report, `calibration-<YYYY-MM-DD>-<run ID>.md`,
