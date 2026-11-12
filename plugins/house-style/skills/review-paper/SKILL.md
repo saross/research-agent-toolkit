@@ -203,8 +203,9 @@ Language-model reviewers systematically underrate prose with hedging,
 risk, and limitation language (LLM-REVal, arXiv 2510.12367), which is
 the register careful humanities and social-science writing uses. Every
 lens carries a guard against this, which protects calibrated wording but
-not a substantive defect the text acknowledges. The guard has to be
-tested, not trusted.
+not a substantive defect the text acknowledges, and admits a request for
+more hedging only with cited evidence weaker than the claim. The guard
+has to be tested, not trusted.
 
 Before an adversarial run, read the calibration records in the folder
 where reviews are written (`calibration-*.md`). Consider only records for

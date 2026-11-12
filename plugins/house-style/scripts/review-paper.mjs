@@ -281,6 +281,11 @@ grep hit, citekey, or verbatim quote) — no anchor, no finding.`
 }
 
 // --- Shared prompt scaffolding ----------------------------------------------
+// Three calibration tests failed the same way: the calibration lens asked for
+// more hedging on prose that was already calibrated, on grounds that were not
+// evidence (caution elsewhere in the text, or analogy with a nearby hedge).
+// So a request for more hedging must cite evidence weaker than the claim as
+// worded.
 const HEDGING_GUARD = `HEDGING GUARD (applies to every dimension, not only calibration): careful humanities and
 social-science prose uses deliberate hedging, risk, and limitation language as a mark of rigour.
 A calibrated hedge is a strength. The guard covers one kind of objection only: one whose sole
@@ -288,6 +293,12 @@ complaint is the presence or degree of uncertainty wording (the claim is hedged,
 much or too little). Don't report that unless you can show the hedge is mis-calibrated, in either
 direction, against the evidence it covers; and before reporting it, check whether the existing
 wording already meets the finding's own retraction condition; if it does, there is no finding.
+A finding that asks for more hedging, a weaker verb, or a softer claim must cite evidence that is
+weaker than the claim as worded: a quotation from the target, a cited source, the supplied source
+notes or other read-only context, or the paper brief, showing that the evidence for this claim
+does not support its strength. A hedge elsewhere in the text, an argument from consistency of
+tone, a general preference for caution, or the claim's directness alone is not such evidence;
+without it, there is no finding.
 The guard does NOT protect a substantive defect because the text acknowledges it: an unsupported
 inference, a wrong citation or fact, a missing evidential basis, a methodological defect, or an
 unmet binding requirement is still a finding when the limitation is openly stated (an honest "we
@@ -398,7 +409,10 @@ produced false "uncited" findings before).`,
 (1) Is each claim proportionate to its evidence? Flag over-claim verbs ("shows",
     "demonstrates", "clearly", "proves") where the evidence supports weaker.
 (2) Mis-calibrated hedges — in BOTH directions: a hedge on a strongly-evidenced claim
-    undersells; an unhedged weakly-evidenced claim oversells.
+    undersells; an unhedged weakly-evidenced claim oversells. To ask for more hedging, a
+    weaker verb, or a softer claim, cite the evidence that is weaker than the claim as
+    worded; a hedge elsewhere in the text, consistency of tone, or a general preference
+    for caution is not that evidence (see the HEDGING GUARD).
     CRITICAL CALIBRATION GUARD: careful humanities/social-science prose uses deliberate
     hedging and risk/limitation language as a mark of RIGOUR. A calibrated hedge is a
     STRENGTH — do NOT flag hedging, cautious framing, or limitation acknowledgements as
@@ -799,10 +813,14 @@ ${HEDGING_GUARD}
 
 The HEDGING GUARD separates two kinds of finding; decide which kind each is before classifying it.
 (a) A finding whose sole objection is the presence or degree of hedging or cautious wording: it
-is sound only if its evidence shows the hedge mis-calibrated, in either direction. If the hedge is
-calibrated, or the text already meets the finding's retraction condition, the finding is not
-sound: classify it semantic-drift (or placeholder, if it would apply to any hedged prose), say why
-in its note, and list it in verifyBeforePresenting.
+is sound only if its evidence shows the hedge mis-calibrated, in either direction. A finding that
+asks for more hedging, a weaker verb, or a softer claim shows this only by citing evidence weaker
+than the claim as worded, as the guard sets out; a hedge elsewhere in the text, an argument from
+consistency of tone, a general preference for caution, or the claim's directness alone does not.
+If the hedge is calibrated, if such a request cites no weaker evidence, or if the text
+already meets the finding's retraction condition, the finding is not sound: classify it
+semantic-drift (or placeholder, if it would apply to any hedged prose), say why in its note, and
+list it in verifyBeforePresenting.
 (b) A finding about a substantive defect (an unsupported inference, a wrong citation or fact, a
 missing evidential basis, a methodological defect, or an unmet binding requirement), including one
 the text openly acknowledges: calibrated wording is no answer to it. Classify it on its evidence

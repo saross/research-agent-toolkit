@@ -574,3 +574,63 @@ class TestHedgingGuardIsNarrow:
         assert "(a) A finding whose sole objection is the presence or degree of hedging" in meta
         assert "calibrated wording is no answer to it" in meta
         assert "quote what satisfies it in the note" in meta
+
+
+def flat(text: str) -> str:
+    """The text with every run of whitespace made one space, so a test pins the
+    wording of a prompt and not where its lines happen to wrap."""
+    return " ".join(text.split())
+
+
+class TestMoreHedgingNeedsWeakerEvidence:
+    """Three calibration tests failed the same way: the calibration lens asked for more
+    hedging on prose that was already calibrated, arguing from caution elsewhere in the
+    text or by analogy with a nearby hedge. A request for more hedging must now cite
+    evidence weaker than the claim as worded. These pin the wording; whether a model
+    honours it is for the calibration test."""
+
+    @pytest.mark.parametrize("stance", ["adversarial", "critical-friend"])
+    def test_every_lens_and_stage_carries_the_rule(self, tmp_path: Path, stance: str) -> None:
+        """Paper scope, so the synthesis (and, adversarially, both checks) run too."""
+        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
+                "stance": stance}
+        report = run(tmp_path, args)
+        assert report["ok"], report.get("error")
+        labels = {c["label"] for c in report["calls"]}
+        assert "cross-section" in labels
+        if stance == "adversarial":
+            assert {"unanimous-check", "meta-reviewer"} <= labels
+        for call in report["calls"]:
+            prompt = flat(call["prompt"])
+            assert ("A finding that asks for more hedging, a weaker verb, or a softer claim "
+                    "must cite evidence that is weaker than the claim as worded") in prompt, \
+                call["label"]
+            assert ("A hedge elsewhere in the text, an argument from consistency of tone, a "
+                    "general preference for caution, or the claim's directness alone is not "
+                    "such evidence; without it, there is no finding.") in prompt, call["label"]
+
+    def test_the_calibration_lens_states_it_under_hedges(self, tmp_path: Path) -> None:
+        """Dimension (2), on mis-calibrated hedges, repeats the rule in brief."""
+        report = run(tmp_path, base_args(stance="adversarial"))
+        lens = next(c["prompt"] for c in report["calls"] if c["label"].startswith("calibration"))
+        dimension = flat(lens.split("(2) Mis-calibrated hedges", 1)[1].split("(3) Altitude", 1)[0])
+        assert ("To ask for more hedging, a weaker verb, or a softer claim, cite the evidence "
+                "that is weaker than the claim as worded") in dimension
+        assert ("a hedge elsewhere in the text, consistency of tone, or a general preference "
+                "for caution is not that evidence") in dimension
+        # Both directions of mis-calibration stay reportable.
+        assert "a hedge on a strongly-evidenced claim undersells" in dimension
+
+    def test_the_meta_reviewer_rejects_a_request_without_weaker_evidence(
+        self, tmp_path: Path,
+    ) -> None:
+        """Branch (a), for hedging-only findings, calls such a request not sound."""
+        report = run(tmp_path, base_args(stance="adversarial"))
+        meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
+        branch = flat(meta.split("(a) A finding whose sole objection", 1)[1]
+                      .split("(b) A finding about a substantive defect", 1)[0])
+        assert ("A finding that asks for more hedging, a weaker verb, or a softer claim shows "
+                "this only by citing evidence weaker than the claim as worded") in branch
+        assert ("If the hedge is calibrated, if such a request cites no weaker evidence, or if "
+                "the text already meets the finding's retraction condition, the finding is not "
+                "sound: classify it semantic-drift") in branch
