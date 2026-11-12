@@ -240,7 +240,7 @@ documented substantive defect (one a referee raised, for example) whose
 limitation the text openly acknowledges. It passes only if at least one
 finding correctly identifies the documented defect, cites valid evidence
 for it, and is retained as sound by the meta-reviewer; merely naming the
-defect, or a finding rejected on any ground, is not a pass. Fix the
+defect, or a finding rejected on any ground, is not a pass. Pre-specify the
 defect and the pass criteria before the run. **Fail (either half):** say that
 the plugin's guard needs fixing, and treat hedging findings as
 uncalibrated until a later version passes both. A section used to
