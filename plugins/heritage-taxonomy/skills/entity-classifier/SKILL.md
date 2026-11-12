@@ -13,12 +13,17 @@ description: >-
 ## Purpose
 
 Classifies mentions of dual-nature entities (hotels, churches, schools of
-arts, halls, lodges, and the like) in historical text, to decide whether
-each should be tagged as:
+arts, halls, lodges, and the like) in historical text, to decide where
+each entity belongs in a faceted taxonomy:
 
 - **Building or facility only** (a built-environment facet)
 - **Business or organisation only** (an agents facet)
 - **Both** (polyhierarchical: it appears in both facets)
+
+The unit of classification is the **mention**. Each mention is labelled
+on its own evidence, and the entity's place in the taxonomy is then
+rolled up from all its mentions (see "Both, and the entity roll-up"
+below).
 
 It reads each mention in context and applies a linguistic heuristic,
 which gives a more careful classification than fixed text patterns.
@@ -29,17 +34,6 @@ into a controlled vocabulary aligned with the principles of the Getty Art
 & Architecture Thesaurus (AAT). Its indicators are English-language; its
 defaults (below) reflect that corpus, and may need adjusting for others.
 
-## When to use
-
-- Classifying hotel mentions as buildings or businesses
-- Deciding a church's classification (building or religious organisation)
-- Analysing schools of arts (venue or cultural society)
-- Any entity that can be both a physical structure and an organisational
-  agent
-- Reviewing and checking automated classifications
-- Batch-processing entity mentions, for example from a reference library
-  of newspaper articles
-
 ## Role
 
 Act as an expert in classifying entities mentioned in historical text,
@@ -47,14 +41,24 @@ for a controlled-vocabulary taxonomy aligned with AAT principles.
 
 ## Task
 
-Analyse each mention of a dual-nature entity and decide its facet:
+Label each mention of a dual-nature entity:
 
-- **(a) Building or facility only:** the entity is referred to solely as
-  a physical structure (built-environment facet)
-- **(b) Business or organisation only:** the entity is referred to solely
-  as an agent or operator (agents facet)
-- **(c) Both (polyhierarchical):** the context shows both spatial and
-  agency characteristics
+- **(a) Building:** the mention refers to the entity as a physical
+  structure (built-environment facet)
+- **(b) Organisation:** the mention refers to the entity as an agent or
+  operator (agents facet)
+- **(c) Both:** the one mention carries spatial and agency indicators
+  together
+
+Then roll the labels up by entity.
+
+A **mention** is one reference to the entity, by its name or by a short
+form ("the hotel", "the hotel's parlour"). Indicators belong to the
+mention they describe: a pronoun that refers back to it ("its tariff")
+or an elliptical reference to its spaces ("the room") adds to that
+mention rather than starting a new one. A passage, or a numbered item in
+a batch, that refers to the entity twice holds two mentions, and each
+gets its own record.
 
 ## Classification Heuristic
 
@@ -78,10 +82,11 @@ Look for evidence that the entity is being used as a **location or physical spac
 - **Venue usage**: "in [entity]'s yard", "at [entity]'s grounds"
 - **Elliptical spatial references**: "at the room" (when discussing [entity]), "in the hall"
   (entity's space)
-  - **CRITICAL**: When entity discussion includes "at/in the [room/hall/library]" without specifying
-    whose, assume it refers to the entity's building
+  - When a passage about the entity says "at/in the [room/hall/library]" without saying whose,
+    read it as the entity's own building
   - Example: "Committee of the School of Arts was to be held at the room" → "the room" = School of
-    Arts' room = building indicator
+    Arts' room = building indicator (and since "Committee of" is a governance indicator on the
+    same mention, this mention is both)
 
 ### Business/Organisation Indicators
 
@@ -99,8 +104,12 @@ Look for evidence that the entity is acting as an **agent, operator, or organisa
 - **Employment**: "[entity] employs", "[entity] hiring staff"
 - **Legal agency**: "[entity] was fined", "[entity] applied for licence", "[entity] prosecuted"
 - **Competition**: "[entity] competing with", "[entity] attracting customers"
+- **Membership and subscriptions**: "members of [entity]", "joined [entity]", "[entity]
+  subscribers", "subscriptions to [entity]"
+- **Committees and governance**: "[entity] committee", "trustees of [entity]", "annual meeting of
+  [entity]", "[entity] elected its officers"
 
-### Metonymy (Important!)
+### Metonymy
 
 When the entity name is used as **shorthand for people/organisation**, classify by intended
 referent:
@@ -114,15 +123,24 @@ referent:
 - **Passive**: "[entity] was refurbished" → Building (recipient of action)
 - **Active**: "[entity] refurbished its premises" → Organisation (agent of action)
 
-### Both (Polyhierarchical) Classification
+### Both, and the entity roll-up
 
-Use "both" when:
+Label a mention **both** only when that one mention carries spatial and agency indicators
+together:
 
-- Context contains **both spatial AND agency indicators**
-- Text treats entity as **both place and actor** in same passage
-- The entity's name shifts within the text between the structure and the organisation (a
-  metonymic shift)
-- Example: "Concert at the hotel [building], with the hotel [business] providing refreshments"
+- Example: "A ball was held at the Carrington Hotel, whose proprietor provided the supper". One
+  mention, placed by "held at" and acting through "whose proprietor"
+
+When the entity's name shifts within a passage between the structure and the organisation (a
+metonymic shift), each mention takes its own label:
+
+- Example: "Concert at the hotel [building], with the hotel [organisation] providing
+  refreshments". Two mentions, one building and one organisation
+
+**Entity roll-up.** Once every mention is labelled, group the mentions by entity. An entity is
+**both** in the taxonomy if its mentions include both building and organisation, or if any one of
+its mentions is both; otherwise it takes the one label its mentions share. The Megalong example
+below shows two mentions rolling up to both.
 
 ### Default Guidance
 
@@ -136,7 +154,7 @@ When indicators are **weak or absent**:
 - **Halls**: Usually buildings unless committee/management explicitly mentioned
 - **Any other type, or where the guidance above gives no default and the context is weak**:
   take the stronger cue if there is one; otherwise give the likelier reading at low confidence
-  and flag the mention for human review
+  and flag the mention for human review, in its **Flag** field (see the church example)
 
 ## Output format
 
@@ -152,9 +170,17 @@ write the file.
 - **Template:** this skill's report template,
   `${CLAUDE_PLUGIN_ROOT}/skills/entity-classifier/templates/classification-report.md`,
   unless the project has its own.
-- **Include:** the analysis of each mention, a summary of patterns,
-  taxonomy recommendations, and comparison tables only where the project has
-  already classified other entity types, with their own figures.
+- **Include:** a record for each mention, the mention counts and the
+  per-entity roll-up, a summary of patterns, taxonomy recommendations,
+  and comparison tables only where the project has already classified
+  other entity types, with their own figures.
+- **Counts:** once the per-mention records are written, tally them with a
+  short script that reads each record's `**Entity:**` and
+  `**Classification:**` lines from the file, not by hand. It counts the
+  mentions under each label, then applies the roll-up rule to each
+  entity; fill the summary and the roll-up table from its output. A hand
+  count drifts over a long batch, and a script can be run again when a
+  reviewer changes a label.
 - **Plugin version** for the report's method line: the `version` in
   `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`.
 
@@ -163,13 +189,16 @@ write the file.
 For each mention analysed, give:
 
 ```text
-### Entity: [entity name]
+### Mention N: [short title]
+**Entity:** [entity name, written the same way in every mention of it]
 **Item:** [article or document title]
 **Classification:** building | organisation | both
 **Confidence:** high | medium | low
+**Flag:** none | for review: [the question the reviewer needs to settle]
 
 **Reasoning:**
-[Two or three sentences explaining the classification, naming the indicators found in the context]
+[As long as a reviewer needs to check it, usually two or three sentences, naming the
+indicators found in the context]
 
 **Indicators found:**
 
@@ -177,7 +206,8 @@ For each mention analysed, give:
 - Organisation: [the indicators matched, or "none"]
 
 **Context:**
-> [The excerpt showing the mention and enough surrounding text to check it]
+> [The excerpt showing the mention and enough surrounding text to check it; where the
+> excerpt holds more than one mention of the entity, bold this one]
 ```
 
 "Organisation" covers a business (a hotel as its proprietor or
@@ -194,7 +224,6 @@ management) as well as a body (a congregation, a committee, an order).
 - **Evidence-based**: Every classification must be grounded in textual evidence
 - **Audit trail**: Reasoning must be clear enough for human reviewer to verify
 - **Conservative**: When truly ambiguous, prefer established defaults over speculation
-- **Spelling**: follow the user's conventions (their `CLAUDE.md`).
 
 ## Taxonomy Naming Principles
 
@@ -236,11 +265,16 @@ This informs whether the entity should use:
 
 ## Example analyses
 
-### Entity: Carrington Hotel
+These are illustrative: they show the format and how the indicators decide a reading, not how
+often each classification or confidence level occurs.
 
+### Mention 1: a concert at the Carrington Hotel
+
+**Entity:** Carrington Hotel
 **Item:** (example)
 **Classification:** building
 **Confidence:** high
+**Flag:** none
 
 **Reasoning:**
 A strong locational phrase ("at the Carrington Hotel") with an event held there, and no sign of
@@ -256,11 +290,13 @@ the hotel acting as an agent. The hotel is purely the venue.
 
 ---
 
-### Entity: Imperial Hotel
+### Mention 2: the Imperial Hotel's renovations
 
+**Entity:** Imperial Hotel
 **Item:** (example)
 **Classification:** organisation
 **Confidence:** high
+**Flag:** none
 
 **Reasoning:**
 The hotel acts as an agent: it announces, closes, and completes work, in the active voice. There
@@ -277,32 +313,63 @@ are no spatial or locational cues.
 
 ---
 
-### Entity: Megalong Hotel
+### Mention 3: the Megalong Hotel's licence renewal
 
+**Entity:** Megalong Hotel
 **Item:** (example)
-**Classification:** both
+**Classification:** organisation
 **Confidence:** high
+**Flag:** none
 
 **Reasoning:**
-The first sentence treats the hotel as a business (its proprietor applies for a licence); the
-second treats it as a venue (a dance held at it). Both aspects appear in the same passage.
+This mention names the hotel only through its proprietor, who applies for a licence renewal:
+ownership and a legal act, with nothing placing anyone at the hotel. The dance in the next
+sentence belongs to the passage's second mention, not to this one.
+
+**Indicators found:**
+
+- Building: none
+- Organisation: ownership/management; legal agency
+
+**Context:**
+> "The **Megalong Hotel** proprietor applied for a licence renewal. Meanwhile, a dance was held
+> at the hotel on Saturday evening."
+
+---
+
+### Mention 4: a dance at the Megalong Hotel
+
+**Entity:** Megalong Hotel
+**Item:** (example)
+**Classification:** building
+**Confidence:** high
+**Flag:** none
+
+**Reasoning:**
+"The hotel" is the venue: a dance "was held at" it. The proprietor and the licence belong to the
+first mention, so they do not make this one both.
 
 **Indicators found:**
 
 - Building: locational phrases; events occurring
-- Organisation: ownership/management; legal agency
+- Organisation: none
 
 **Context:**
 > "The Megalong Hotel proprietor applied for a licence renewal. Meanwhile, a dance was held at
-> the hotel on Saturday evening."
+> **the hotel** on Saturday evening."
+
+**Roll-up:** the Megalong Hotel has one organisation mention and one building mention, so it is
+**both** in the taxonomy.
 
 ---
 
-### Entity: Katoomba Hotel (metonymy)
+### Mention 5: the Katoomba Hotel denies the charges (metonymy)
 
+**Entity:** Katoomba Hotel
 **Item:** (example)
 **Classification:** organisation
 **Confidence:** high
+**Flag:** none
 
 **Reasoning:**
 "The hotel" stands for its management or proprietor, who can deny and contest; the building is
@@ -315,6 +382,35 @@ not meant.
 
 **Context:**
 > "The Katoomba Hotel denies responsibility for the incident and contests the charges."
+
+---
+
+### Mention 6: Mr Smith, "of the Wesleyan Church" (weak context)
+
+**Entity:** Wesleyan Church, Lawson
+**Item:** (example)
+**Classification:** organisation
+**Confidence:** low
+**Flag:** for review: is the church named as Mr Smith's congregation (organisation), or as the
+place he lives or comes from (building)?
+
+**Reasoning:**
+The church appears only in "of the Wesleyan Church", with no event, locational phrase, or agency
+verb attached; the gathering he attended is not placed at the church. Read as an affiliation, the
+phrase points to the congregation, but it does not say whether Mr Smith is a member, an officer,
+or simply someone from there, so it falls short of the membership indicator. The same "Mr X,
+of …" form often gives a place of residence ("Mr J. Smith, of Lawson"), which leaves a building
+reading open. The default guidance gives churches no default, so the likelier reading,
+organisation, is given at low confidence and flagged.
+
+**Indicators found:**
+
+- Building: none
+- Organisation: none matched ("of the Wesleyan Church" suggests membership but does not state
+  it)
+
+**Context:**
+> "Among those present was Mr. J. Smith, of the Wesleyan Church, Lawson."
 
 ## Working with Batch Data
 
