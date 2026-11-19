@@ -209,21 +209,36 @@ def test_url_parsing(url, kind, name):
         (0, {"visibility": "private", "private": False, "full_name": "o/r"}, "unknown", "o/r"),
         (0, {"message": "Not Found"}, "unknown", "given/name"),
         (1, {"message": "Not Found", "status": "404"}, "unknown", "given/name"),
-        (1, {"visibility": "private", "private": True, "full_name": "o/r"}, "unknown",
-         "given/name"),
-        (0, {"visibility": "public", "private": False, "full_name": "New/Name"}, "public",
-         "new/name"),
+        (
+            1,
+            {"visibility": "private", "private": True, "full_name": "o/r"},
+            "unknown",
+            "given/name",
+        ),
+        (
+            0,
+            {"visibility": "public", "private": False, "full_name": "New/Name"},
+            "public",
+            "new/name",
+        ),
     ],
-    ids=["private", "public", "internal", "inconsistent", "no-field", "404", "error-exit",
-         "renamed"],
+    ids=[
+        "private",
+        "public",
+        "internal",
+        "inconsistent",
+        "no-field",
+        "404",
+        "error-exit",
+        "renamed",
+    ],
 )
-def test_github_answer_is_only_private_when_unambiguous(tmp_path, exit_code, payload, visibility,
-                                                         name):
+def test_github_answer_is_only_private_when_unambiguous(
+    tmp_path, exit_code, payload, visibility, name
+):
     guard = _engine_module()
     fake = tmp_path / "gh"
-    fake.write_text(
-        f"#!/bin/sh\ncat <<'EOF'\n{json.dumps(payload)}\nEOF\nexit {exit_code}\n"
-    )
+    fake.write_text(f"#!/bin/sh\ncat <<'EOF'\n{json.dumps(payload)}\nEOF\nexit {exit_code}\n")
     fake.chmod(0o755)
     result = guard.github_visibility("given/name", str(fake))
     assert result == (visibility, name)

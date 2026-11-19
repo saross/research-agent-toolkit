@@ -136,7 +136,7 @@ def _flag_state(value: str) -> str | None:
     for state in (FLAG_OPEN, FLAG_RESOLVED):
         prefix = state + ":"
         if lowered.startswith(prefix):
-            return state if value[len(prefix):].strip() else None
+            return state if value[len(prefix) :].strip() else None
     return None
 
 
@@ -158,14 +158,12 @@ def _check(raw: dict[str, Any]) -> Mention:
     label = raw["classification"].lower()
     if label not in LABELS:
         raise ReportError(
-            f"{where}: classification {raw['classification']!r} is not one of "
-            f"{', '.join(LABELS)}"
+            f"{where}: classification {raw['classification']!r} is not one of {', '.join(LABELS)}"
         )
     confidence = raw["confidence"].lower()
     if confidence not in CONFIDENCES:
         raise ReportError(
-            f"{where}: confidence {raw['confidence']!r} is not one of "
-            f"{', '.join(CONFIDENCES)}"
+            f"{where}: confidence {raw['confidence']!r} is not one of {', '.join(CONFIDENCES)}"
         )
     flag = _flag_state(raw["flag"])
     if flag is None:
@@ -286,17 +284,19 @@ def tally(mentions: list[Mention]) -> dict[str, Any]:
         counts = Counter(m.classification for m in group)
         provisional = union(m.classification for m in group)
         supported = union(m.classification for m in group if not m.is_open)
-        entities.append({
-            "entity": name,
-            "mentions": len(group),
-            **{label: counts[label] for label in LABELS},
-            "flagged": sum(m.is_open for m in group),
-            "resolved": sum(m.flag == FLAG_RESOLVED for m in group),
-            "provisional": provisional,
-            "supported": supported,
-            "recommendation": provisional if provisional == supported else PENDING,
-            "mention_numbers": [m.number for m in group],
-        })
+        entities.append(
+            {
+                "entity": name,
+                "mentions": len(group),
+                **{label: counts[label] for label in LABELS},
+                "flagged": sum(m.is_open for m in group),
+                "resolved": sum(m.flag == FLAG_RESOLVED for m in group),
+                "provisional": provisional,
+                "supported": supported,
+                "recommendation": provisional if provisional == supported else PENDING,
+                "mention_numbers": [m.number for m in group],
+            }
+        )
 
     by_recommendation = Counter(e["recommendation"] for e in entities)
     return {
@@ -312,8 +312,7 @@ def tally(mentions: list[Mention]) -> dict[str, Any]:
                 }
                 for label in LABELS
             },
-            "by_confidence": {c: sum(m.confidence == c for m in mentions)
-                              for c in CONFIDENCES},
+            "by_confidence": {c: sum(m.confidence == c for m in mentions) for c in CONFIDENCES},
         },
         "entities": entities,
         "by_recommendation": {r: by_recommendation[r] for r in RECOMMENDATIONS},
@@ -342,15 +341,25 @@ def _cell(text: str) -> str:
 def render_markdown(summary: dict[str, Any]) -> str:
     """Render the tally as the report template's two tables and two lines."""
     m = summary["mentions"]
-    out = [f"Mentions: {m['total']} ({m['flagged']} flagged, {m['resolved']} resolved)",
-           f"Entities: {len(summary['entities'])}", "",
-           MENTION_HEADER, "| --- | --- | --- | --- |"]
+    out = [
+        f"Mentions: {m['total']} ({m['flagged']} flagged, {m['resolved']} resolved)",
+        f"Entities: {len(summary['entities'])}",
+        "",
+        MENTION_HEADER,
+        "| --- | --- | --- | --- |",
+    ]
     for label in LABELS:
         row = m["by_label"][label]
-        out.append(f"| {label.capitalize()} | {row['count']} | {row['percentage']:.1f}% "
-                   f"| {row['flagged']} |")
-    out += [f"| **Total** | **{m['total']}** | **100%** | **{m['flagged']}** |", "",
-            ENTITY_HEADER, "| --- " * 9 + "|"]
+        out.append(
+            f"| {label.capitalize()} | {row['count']} | {row['percentage']:.1f}% "
+            f"| {row['flagged']} |"
+        )
+    out += [
+        f"| **Total** | **{m['total']}** | **100%** | **{m['flagged']}** |",
+        "",
+        ENTITY_HEADER,
+        "| --- " * 9 + "|",
+    ]
     for e in summary["entities"]:
         out.append(
             f"| {_cell(e['entity'])} | {e['mentions']} | {e['building']} | "
@@ -359,13 +368,14 @@ def render_markdown(summary: dict[str, Any]) -> str:
         )
     r = summary["by_recommendation"]
     c = m["by_confidence"]
-    out += ["",
-            f"**Entities by recommendation:** {r['building']} building only, "
-            f"{r['organisation']} business or organisation only, {r['both']} both, "
-            f"and {r[PENDING]} pending review.",
-            "",
-            f"**Mentions by confidence:** {c['high']} high, {c['medium']} medium, "
-            f"and {c['low']} low."]
+    out += [
+        "",
+        f"**Entities by recommendation:** {r['building']} building only, "
+        f"{r['organisation']} business or organisation only, {r['both']} both, "
+        f"and {r[PENDING]} pending review.",
+        "",
+        f"**Mentions by confidence:** {c['high']} high, {c['medium']} medium, and {c['low']} low.",
+    ]
     return "\n".join(out) + "\n"
 
 
@@ -386,8 +396,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     for names in near_duplicate_entities(mentions):
-        print(f"{parser.prog}: warning: entity names differ only in case or spacing, "
-              f"so are counted apart: {names}", file=sys.stderr)
+        print(
+            f"{parser.prog}: warning: entity names differ only in case or spacing, "
+            f"so are counted apart: {names}",
+            file=sys.stderr,
+        )
 
     summary = tally(mentions)
     if args.json:

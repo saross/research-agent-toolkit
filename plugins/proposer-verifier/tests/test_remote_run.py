@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 import remote_run  # noqa: E402
 
-PROFILE = '''
+PROFILE = """
 from pathlib import Path
 out = Path("runs/p1/out")
 out.mkdir(parents=True, exist_ok=True)
@@ -34,7 +34,7 @@ out.mkdir(parents=True, exist_ok=True)
 (out / "tables" / "a.csv").write_text("x\\n1\\n")
 (out / "scratch.tmp").write_text("not listed\\n")
 (out / "outputs.manifest").write_text({manifest!r})
-'''
+"""
 GOOD_MANIFEST = "summary.md\ntables/a.csv\n"
 
 
@@ -48,9 +48,12 @@ def git(cwd: Path, *argv: str) -> str:
 def identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Give git an identity and keep it away from the user's own configuration."""
     for name, value in {
-        "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
-        "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid",
-        "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull,
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@example.invalid",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "test@example.invalid",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
         "HOME": str(tmp_path),
     }.items():
         monkeypatch.setenv(name, value)
@@ -82,10 +85,20 @@ def write_script(here: Path, manifest: str = GOOD_MANIFEST, extra: str = "") -> 
 
 def transact(here: Path, there: Path, script: Path) -> int:
     """Run the transaction between the two clones."""
-    return remote_run.main([
-        "--runner", "local", "--workdir", str(there), "--python", sys.executable,
-        "--script", str(script), "--output-dir", str(here / "runs" / "p1" / "out"),
-    ])
+    return remote_run.main(
+        [
+            "--runner",
+            "local",
+            "--workdir",
+            str(there),
+            "--python",
+            sys.executable,
+            "--script",
+            str(script),
+            "--output-dir",
+            str(here / "runs" / "p1" / "out"),
+        ]
+    )
 
 
 def test_the_script_goes_out_and_only_the_listed_outputs_come_back(
@@ -100,7 +113,9 @@ def test_the_script_goes_out_and_only_the_listed_outputs_come_back(
     script_commit, output_commit = git(here, "rev-parse", "HEAD~1"), git(here, "rev-parse", "HEAD")
     assert git(here, "diff", "--name-only", start, script_commit) == "runs/p1/code/profile.py"
     assert sorted(git(here, "diff", "--name-only", script_commit, output_commit).splitlines()) == [
-        "runs/p1/out/outputs.manifest", "runs/p1/out/summary.md", "runs/p1/out/tables/a.csv",
+        "runs/p1/out/outputs.manifest",
+        "runs/p1/out/summary.md",
+        "runs/p1/out/tables/a.csv",
     ]
     assert (here / "runs/p1/out/summary.md").read_text() == "summary\n"
     assert not (here / "runs/p1/out/scratch.tmp").exists()  # unlisted: never committed
@@ -123,7 +138,7 @@ def test_a_file_staged_beforehand_stops_everything(clones: tuple[Path, Path]) ->
 
 
 def test_an_untracked_or_modified_file_elsewhere_stops_everything(
-    clones: tuple[Path, Path]
+    clones: tuple[Path, Path],
 ) -> None:
     here, there = clones
     script = write_script(here)
@@ -168,8 +183,9 @@ def test_a_remote_clone_in_the_wrong_state_stops_before_any_commit(
     assert status.strip().endswith("profile.py")
 
 
-@pytest.mark.parametrize("manifest", ["../../../README.md\n", "/etc/passwd\n", "", "missing.md\n",
-                                      "--force\n"])
+@pytest.mark.parametrize(
+    "manifest", ["../../../README.md\n", "/etc/passwd\n", "", "missing.md\n", "--force\n"]
+)
 def test_a_bad_manifest_commits_no_outputs(clones: tuple[Path, Path], manifest: str) -> None:
     here, there = clones
     assert transact(here, there, write_script(here, manifest)) == 1
@@ -191,7 +207,10 @@ def test_a_script_outside_the_repository_is_refused(
 def test_helpers_for_status_and_manifest() -> None:
     status = " M README.md\0?? runs/p1/code/profile.py\0A  staged.txt\0R  new name.md\0old.md\0"
     assert remote_run.other_changes(status, "runs/p1/code/profile.py") == [
-        " M README.md", "A  staged.txt", "R  new name.md", "from old.md",
+        " M README.md",
+        "A  staged.txt",
+        "R  new name.md",
+        "from old.md",
     ]
     # A sole modified, tracked script: its leading space must survive.
     assert remote_run.other_changes(" M runs/p1/code/profile.py\0", "runs/p1/code/profile.py") == []

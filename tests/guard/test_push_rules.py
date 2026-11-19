@@ -116,7 +116,9 @@ def test_preexisting_public_content_does_not_block(sandbox):
     sandbox.commit("legacy.txt", f"{PERSON}\n")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     sha = sandbox.commit("new.txt", "fine\n")
     assert_passed(sandbox.push(), sandbox, sha)
@@ -126,7 +128,9 @@ def test_editing_near_legacy_content_scans_only_added_lines(sandbox):
     sandbox.commit("legacy.txt", f"{PERSON}\nline two\n")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     sha = sandbox.commit("legacy.txt", f"{PERSON}\nline two changed\n")
     assert_passed(sandbox.push(), sandbox, sha)
@@ -136,7 +140,9 @@ def test_changing_a_file_mode_adds_no_content(sandbox):
     sandbox.commit("legacy.sh", f"# {PERSON}\n")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     (sandbox.work / "legacy.sh").chmod(0o755)
     sandbox.git("add", "legacy.sh")
@@ -147,14 +153,26 @@ def test_changing_a_file_mode_adds_no_content(sandbox):
 def test_a_path_that_is_not_utf8_still_gives_a_useful_report(sandbox):
     sandbox.seed_public()
     process = subprocess.run(
-        ["git", "hash-object", "-w", "--stdin"], input=f"{PERSON}\n", text=True,
-        capture_output=True, cwd=sandbox.work, env=sandbox.env, check=True,
+        ["git", "hash-object", "-w", "--stdin"],
+        input=f"{PERSON}\n",
+        text=True,
+        capture_output=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     name = b"caf\xe9.txt"
     subprocess.run(
-        [b"git", b"update-index", b"--add", b"--cacheinfo",
-         b"100644," + process.stdout.strip().encode() + b"," + name],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        [
+            b"git",
+            b"update-index",
+            b"--add",
+            b"--cacheinfo",
+            b"100644," + process.stdout.strip().encode() + b"," + name,
+        ],
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     sandbox.git("commit", "-q", "-m", "odd name")
     result = sandbox.push()
@@ -221,7 +239,9 @@ def test_gitleaks_runs_locked_from_an_empty_folder_with_a_clean_environment(sand
     sandbox.calls.write_text("")
     subprocess.run(
         ["git", "push", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=env_marker, capture_output=True,
+        cwd=sandbox.work,
+        env=env_marker,
+        capture_output=True,
     )
     call = json.loads(sandbox.calls.read_text().splitlines()[-1])
     assert "--ignore-gitleaks-allow" in call["argv"]
@@ -273,7 +293,9 @@ def test_ordinary_merge_of_legacy_content_does_not_block(sandbox):
     sandbox.commit("legacy.txt", f"{PERSON}\n")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     main_tip = sandbox.head()
     sandbox.git("checkout", "-q", "-b", "feature", base)
@@ -289,7 +311,9 @@ def test_merge_scans_only_what_is_new_against_every_parent(sandbox):
     sandbox.commit("README.md", f"{PERSON}\n\n\n\n{original}")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     main_tip = sandbox.head()
     sandbox.git("checkout", "-q", "-b", "feature", base)
@@ -325,8 +349,13 @@ def test_replace_refs_do_not_hide_content(sandbox):
 def test_plumbing_commit_is_checked(sandbox):
     sandbox.seed_public()
     process = subprocess.run(
-        ["git", "hash-object", "-w", "--stdin"], input=f"{PERSON}\n", text=True,
-        capture_output=True, cwd=sandbox.work, env=sandbox.env, check=True,
+        ["git", "hash-object", "-w", "--stdin"],
+        input=f"{PERSON}\n",
+        text=True,
+        capture_output=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     index = sandbox.root / "index"
     env = dict(sandbox.env, GIT_INDEX_FILE=str(index))
@@ -364,8 +393,13 @@ def test_annotated_tag_message_on_an_old_commit(sandbox):
 def test_tag_on_a_blob_is_refused(sandbox):
     sandbox.seed_public()
     process = subprocess.run(
-        ["git", "hash-object", "-w", "--stdin"], input="anything\n", text=True,
-        capture_output=True, cwd=sandbox.work, env=sandbox.env, check=True,
+        ["git", "hash-object", "-w", "--stdin"],
+        input="anything\n",
+        text=True,
+        capture_output=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     blob = process.stdout.strip()
     sandbox.git("tag", "blobtag", blob)
@@ -381,7 +415,13 @@ def test_refs_outside_heads_and_tags_are_refused_on_public(sandbox):
 def test_submodule_blocks(sandbox):
     sandbox.seed_public()
     sandbox.git(
-        "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(sandbox.private), "sub",
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        str(sandbox.private),
+        "sub",
         check=False,
     )
     sandbox.git("update-index", "--add", "--cacheinfo", f"160000,{sandbox.head()},vendored")
@@ -487,8 +527,7 @@ def test_allowed_binary_is_still_searched_for_terms(sandbox):
 def test_lfs_pointer_blocks_without_an_allowance(sandbox):
     sandbox.seed_public()
     pointer = (
-        "version https://git-lfs.github.com/spec/v1\n"
-        "oid sha256:" + "a" * 64 + "\nsize 12345\n"
+        "version https://git-lfs.github.com/spec/v1\noid sha256:" + "a" * 64 + "\nsize 12345\n"
     )
     sha = sandbox.commit("big.bin", pointer)
     assert_blocked(sandbox.push(), sandbox, sha)

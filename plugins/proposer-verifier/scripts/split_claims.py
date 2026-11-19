@@ -100,7 +100,7 @@ def canonical_doi(value: object) -> str:
     text = value.strip().lower()
     for prefix in DOI_PREFIXES:
         if text.startswith(prefix):
-            return text[len(prefix):].strip()
+            return text[len(prefix) :].strip()
     return text
 
 

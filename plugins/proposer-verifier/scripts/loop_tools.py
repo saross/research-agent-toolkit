@@ -80,8 +80,11 @@ LOOPS = {
     "data-profile": ("pass", "partial", "fail", "unverifiable", "documentation_defect"),
 }
 COUNT_NAMES = {
-    "pass": "PASS_CT", "partial": "PARTIAL_CT", "fail": "FAIL_CT",
-    "unverifiable": "UNVER_CT", "documentation_defect": "DOCDEF_CT",
+    "pass": "PASS_CT",
+    "partial": "PARTIAL_CT",
+    "fail": "FAIL_CT",
+    "unverifiable": "UNVER_CT",
+    "documentation_defect": "DOCDEF_CT",
 }
 
 
@@ -102,7 +105,7 @@ def extract_block(text: str, marker: str) -> list[str] | None:
     lines = [raw.strip() for raw in text.splitlines()]
     if lines.count(begin) != 1 or lines.count(end) != 1:
         return None
-    rest = iter(lines[lines.index(begin) + 1:])
+    rest = iter(lines[lines.index(begin) + 1 :])
     if next((line for line in rest if line), None) != "```jsonl":
         return None
     found: list[str] = []
@@ -134,6 +137,7 @@ def parse_record(line: str) -> dict | None:
     Returns:
         The object, or None if the line is not one unambiguous JSON object.
     """
+
     def no_repeats(pairs: list[tuple[str, object]]) -> dict:
         keys = [key for key, _ in pairs]
         if len(set(keys)) != len(keys):

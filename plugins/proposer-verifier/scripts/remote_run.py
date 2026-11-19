@@ -276,8 +276,7 @@ def require_single_commit(get, commit: str, parent: str, paths: list[str], where
             f"{where}: commit {commit[:12]} does not sit directly on {parent[:12]} "
             f"(its parents: {[p[:12] for p in parents]}); something else was committed meanwhile"
         )
-    changed = sorted(p for p in get(
-        ["diff", "--name-only", "-z", parent, commit]).split("\0") if p)
+    changed = sorted(p for p in get(["diff", "--name-only", "-z", parent, commit]).split("\0") if p)
     if changed != sorted(paths):
         raise Stop(f"{where}: commit {commit[:12]} changes {changed}, expected {sorted(paths)}")
 
@@ -426,8 +425,7 @@ def transact(args: argparse.Namespace, progress: dict[str, str]) -> tuple[str, s
     # ---- 5. push that one commit to the one branch ---------------------------
     if upstream_of(branch, there) != (there_origin, there_url, ref):
         raise Stop(
-            "the other clone's remote settings changed during the run; "
-            "the outputs were not pushed"
+            "the other clone's remote settings changed during the run; the outputs were not pushed"
         )
     there(["push", "--quiet", "--no-follow-tags", there_origin, f"{output_commit}:{ref}"])
     del progress["output commit (there, not yet pushed)"]
@@ -458,8 +456,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--python", required=True, help="Python interpreter to use there.")
     parser.add_argument("--script", required=True, help="The script, in this clone.")
     parser.add_argument("--output-dir", required=True, help="The output folder, in this clone.")
-    parser.add_argument("--runner", choices=("ssh", "local"), default="ssh",
-                        help="`local` treats --workdir as a clone on this machine (for tests).")
+    parser.add_argument(
+        "--runner",
+        choices=("ssh", "local"),
+        default="ssh",
+        help="`local` treats --workdir as a clone on this machine (for tests).",
+    )
     args = parser.parse_args(argv)
     if args.runner == "ssh" and (not args.host or args.host.startswith("-")):
         parser.error("--host is required, and may not begin with a dash")

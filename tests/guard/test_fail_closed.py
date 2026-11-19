@@ -89,7 +89,11 @@ def test_an_unpinned_scanner_outside_test_mode_refuses_every_push(sandbox):
 
 def test_install_refuses_a_pin_that_doesnt_match_the_scanner(sandbox):
     result = sandbox.engine(
-        "install", "--gitleaks", str(sandbox.gitleaks), "--gitleaks-sha256", "0" * 64,
+        "install",
+        "--gitleaks",
+        str(sandbox.gitleaks),
+        "--gitleaks-sha256",
+        "0" * 64,
         "--test-mode",
     )
     assert result.returncode != 0

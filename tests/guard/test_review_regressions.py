@@ -92,7 +92,9 @@ def test_2_editing_a_file_that_already_holds_a_published_name_passes(sandbox):
     sandbox.commit("notes.md", f"{PERSON}\n")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     sha = sandbox.commit("notes.md", f"{PERSON}\nan unrelated new line\n")
     assert_passed(sandbox.push(), sandbox, sha)
@@ -102,7 +104,9 @@ def test_2_moving_a_published_name_within_a_file_passes(sandbox):
     sandbox.commit("notes.md", f"intro\n{PERSON}\n")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     sha = sandbox.commit("notes.md", f"{PERSON}\nintro\n")
     assert_passed(sandbox.push(), sandbox, sha)
@@ -112,7 +116,9 @@ def test_2_a_second_copy_of_a_published_name_blocks(sandbox):
     sandbox.commit("notes.md", f"{PERSON}\n")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     sha = sandbox.commit("notes.md", f"{PERSON}\nagain {PERSON}\n")
     result = sandbox.push()

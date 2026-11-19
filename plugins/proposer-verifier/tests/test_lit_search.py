@@ -226,20 +226,42 @@ class TestDeduplication:
 
     def test_same_doi_kept_once(self):
         papers = [
-            {"doi": "10.1234/test", "title": "Paper A", "source": "crossref",
-             "authors": None, "year": None},
-            {"doi": "10.1234/test", "title": "Paper A", "source": "s2",
-             "authors": ["Author"], "year": 2021},
+            {
+                "doi": "10.1234/test",
+                "title": "Paper A",
+                "source": "crossref",
+                "authors": None,
+                "year": None,
+            },
+            {
+                "doi": "10.1234/test",
+                "title": "Paper A",
+                "source": "s2",
+                "authors": ["Author"],
+                "year": 2021,
+            },
         ]
         result = lit_search._deduplicate(papers)
         assert len(result) == 1
 
     def test_prefers_more_complete_record(self):
         papers = [
-            {"doi": "10.1234/test", "title": None, "source": "crossref",
-             "authors": None, "year": None, "abstract": None},
-            {"doi": "10.1234/test", "title": "Full Title", "source": "s2",
-             "authors": ["Author"], "year": 2021, "abstract": "Text"},
+            {
+                "doi": "10.1234/test",
+                "title": None,
+                "source": "crossref",
+                "authors": None,
+                "year": None,
+                "abstract": None,
+            },
+            {
+                "doi": "10.1234/test",
+                "title": "Full Title",
+                "source": "s2",
+                "authors": ["Author"],
+                "year": 2021,
+                "abstract": "Text",
+            },
         ]
         result = lit_search._deduplicate(papers)
         assert result[0]["title"] == "Full Title"
@@ -282,9 +304,9 @@ class TestMetadata:
     def test_merges_multiple_sources(self, mock_get):
         """Metadata from multiple sources is merged into one record."""
         mock_get.side_effect = [
-            CROSSREF_WORK,        # CrossRef
-            S2_PAPER,             # S2
-            OPENALEX_WORK,        # OpenAlex
+            CROSSREF_WORK,  # CrossRef
+            S2_PAPER,  # S2
+            OPENALEX_WORK,  # OpenAlex
         ]
         client = MagicMock()
         result = lit_search.cmd_metadata("10.1371/journal.pcbi.1009041", client)
@@ -313,9 +335,9 @@ class TestReferences:
     def test_crossref_references_parsed(self, mock_get):
         """CrossRef reference array is correctly parsed."""
         mock_get.side_effect = [
-            CROSSREF_WORK,    # CrossRef
-            None,             # S2 fails
-            None,             # OpenAlex fails
+            CROSSREF_WORK,  # CrossRef
+            None,  # S2 fails
+            None,  # OpenAlex fails
         ]
         client = MagicMock()
         result = lit_search.cmd_references("10.1371/journal.pcbi.1009041", client)
@@ -328,9 +350,9 @@ class TestReferences:
     def test_crossref_fails_s2_fallback(self, mock_get):
         """Falls back to S2 when CrossRef returns nothing."""
         mock_get.side_effect = [
-            {"message": {}},           # CrossRef: no references
-            S2_PAPER_WITH_REFS,        # S2: has references
-            None,                      # OpenAlex fails
+            {"message": {}},  # CrossRef: no references
+            S2_PAPER_WITH_REFS,  # S2: has references
+            None,  # OpenAlex fails
         ]
         client = MagicMock()
         result = lit_search.cmd_references("10.1371/journal.pcbi.1009041", client)
@@ -343,15 +365,13 @@ class TestReferences:
     def test_deduplicates_across_sources(self, mock_get):
         """Same DOI from CrossRef and S2 appears only once."""
         mock_get.side_effect = [
-            CROSSREF_WORK,             # CrossRef: has 10.1038/sdata.2016.18
-            S2_PAPER_WITH_REFS,        # S2: also has 10.1038/sdata.2016.18
-            None,                      # OpenAlex fails
+            CROSSREF_WORK,  # CrossRef: has 10.1038/sdata.2016.18
+            S2_PAPER_WITH_REFS,  # S2: also has 10.1038/sdata.2016.18
+            None,  # OpenAlex fails
         ]
         client = MagicMock()
         result = lit_search.cmd_references("10.1371/journal.pcbi.1009041", client)
-        fair_refs = [
-            p for p in result if p.get("doi") == "10.1038/sdata.2016.18"
-        ]
+        fair_refs = [p for p in result if p.get("doi") == "10.1038/sdata.2016.18"]
         assert len(fair_refs) == 1
 
 
@@ -362,13 +382,11 @@ class TestCitations:
     def test_sorted_by_citation_count(self, mock_get):
         """Citations are sorted by citation count descending."""
         mock_get.side_effect = [
-            S2_PAPER_WITH_CITATIONS,   # S2
-            None,                       # OpenAlex DOI resolve fails
+            S2_PAPER_WITH_CITATIONS,  # S2
+            None,  # OpenAlex DOI resolve fails
         ]
         client = MagicMock()
-        result = lit_search.cmd_citations(
-            "10.1371/journal.pcbi.1009041", client
-        )
+        result = lit_search.cmd_citations("10.1371/journal.pcbi.1009041", client)
         assert len(result) == 2
         # Citation counts should be descending
         counts = [p.get("citation_count", 0) for p in result]
@@ -382,9 +400,7 @@ class TestCitations:
             None,
         ]
         client = MagicMock()
-        result = lit_search.cmd_citations(
-            "10.1371/journal.pcbi.1009041", client, limit=1
-        )
+        result = lit_search.cmd_citations("10.1371/journal.pcbi.1009041", client, limit=1)
         assert len(result) <= 1
 
 
@@ -472,7 +488,9 @@ class TestSafeGet:
     """Tests for the HTTP request wrapper with rate limiting and retries."""
 
     def _make_mock_response(
-        self, status_code: int = 200, json_data: dict | None = None,
+        self,
+        status_code: int = 200,
+        json_data: dict | None = None,
         raise_json_error: bool = False,
     ) -> MagicMock:
         """Create a mock httpx response."""
@@ -483,9 +501,7 @@ class TestSafeGet:
         # a phantom Retry-After hint into the retry-delay calculation.
         mock.headers = {}
         if raise_json_error:
-            mock.json.side_effect = json.JSONDecodeError(
-                "test", "doc", 0
-            )
+            mock.json.side_effect = json.JSONDecodeError("test", "doc", 0)
         else:
             mock.json.return_value = json_data or {}
         return mock
@@ -495,9 +511,7 @@ class TestSafeGet:
         """200 response with valid dict JSON returns the dict."""
         client = MagicMock()
         expected = {"message": {"title": "Test"}}
-        client.get.return_value = self._make_mock_response(
-            200, expected
-        )
+        client.get.return_value = self._make_mock_response(200, expected)
         result = lit_search._safe_get(client, "http://test", "crossref")
         assert result == expected
 
@@ -532,8 +546,7 @@ class TestSafeGet:
         """429 on every attempt: MAX_RETRIES attempts, then None."""
         client = MagicMock()
         client.get.side_effect = [
-            self._make_mock_response(429)
-            for _ in range(lit_search.MAX_RETRIES)
+            self._make_mock_response(429) for _ in range(lit_search.MAX_RETRIES)
         ]
         result = lit_search._safe_get(client, "http://test", "s2")
         assert result is None
@@ -557,9 +570,7 @@ class TestSafeGet:
     def test_invalid_json_returns_none(self, mock_rl):
         """Valid HTTP but invalid JSON returns None."""
         client = MagicMock()
-        client.get.return_value = self._make_mock_response(
-            200, raise_json_error=True
-        )
+        client.get.return_value = self._make_mock_response(200, raise_json_error=True)
         result = lit_search._safe_get(client, "http://test", "crossref")
         assert result is None
 
@@ -610,9 +621,7 @@ OPENALEX_SEARCH_RESPONSE = {
             "display_name": "Paper A about FAIR",
             "publication_year": 2021,
             "cited_by_count": 12,
-            "authorships": [
-                {"author": {"display_name": "Alice Smith"}}
-            ],
+            "authorships": [{"author": {"display_name": "Alice Smith"}}],
         },
         {
             "id": "https://openalex.org/W888",
@@ -620,9 +629,7 @@ OPENALEX_SEARCH_RESPONSE = {
             "display_name": "Paper C unique to OpenAlex",
             "publication_year": 2023,
             "cited_by_count": 3,
-            "authorships": [
-                {"author": {"display_name": "Carol Lee"}}
-            ],
+            "authorships": [{"author": {"display_name": "Carol Lee"}}],
         },
     ]
 }
@@ -645,33 +652,27 @@ class TestOpenAlexApiKey:
         """Absent a key, params pass through unchanged — same object."""
         with patch.object(lit_search, "OPENALEX_API_KEY", ""):
             params = {"filter": "doi:10.1234/x"}
-            result = lit_search._with_openalex_key(
-                "api.openalex.org", params
-            )
+            result = lit_search._with_openalex_key("api.openalex.org", params)
             assert result is params
 
     def test_no_key_leaves_none_as_none(self):
         """Absent a key, a None params stays None (no empty dict)."""
         with patch.object(lit_search, "OPENALEX_API_KEY", ""):
-            assert lit_search._with_openalex_key(
-                "api.openalex.org", None
-            ) is None
+            assert lit_search._with_openalex_key("api.openalex.org", None) is None
 
     def test_key_attached_for_openalex_host(self):
         """With a key, OpenAlex requests carry it as `api_key`."""
         with patch.object(lit_search, "OPENALEX_API_KEY", "secret-key"):
-            result = lit_search._with_openalex_key(
-                "api.openalex.org", {"filter": "doi:10.1234/x"}
-            )
+            result = lit_search._with_openalex_key("api.openalex.org", {"filter": "doi:10.1234/x"})
             assert result["api_key"] == "secret-key"
             assert result["filter"] == "doi:10.1234/x"
 
     def test_key_attached_when_params_is_none(self):
         """A keyed request with no other params still gets the key."""
         with patch.object(lit_search, "OPENALEX_API_KEY", "secret-key"):
-            assert lit_search._with_openalex_key(
-                "api.openalex.org", None
-            ) == {"api_key": "secret-key"}
+            assert lit_search._with_openalex_key("api.openalex.org", None) == {
+                "api_key": "secret-key"
+            }
 
     def test_caller_params_not_mutated(self):
         """The caller's dict is copied, not modified in place."""
@@ -683,9 +684,7 @@ class TestOpenAlexApiKey:
     def test_explicit_api_key_wins(self):
         """A caller-supplied api_key is left alone."""
         with patch.object(lit_search, "OPENALEX_API_KEY", "env-key"):
-            result = lit_search._with_openalex_key(
-                "api.openalex.org", {"api_key": "caller-key"}
-            )
+            result = lit_search._with_openalex_key("api.openalex.org", {"api_key": "caller-key"})
             assert result["api_key"] == "caller-key"
 
     @pytest.mark.parametrize(
@@ -716,7 +715,9 @@ class TestOpenAlexApiKey:
         client.get.return_value = resp
         with patch.object(lit_search, "OPENALEX_API_KEY", "secret-key"):
             lit_search._safe_get(
-                client, self.OPENALEX_URL, "openalex",
+                client,
+                self.OPENALEX_URL,
+                "openalex",
                 params={"filter": "doi:10.1234/x"},
             )
         sent = client.get.call_args.kwargs["params"]
@@ -733,7 +734,9 @@ class TestOpenAlexApiKey:
         client.get.return_value = resp
         with patch.object(lit_search, "OPENALEX_API_KEY", "secret-key"):
             lit_search._safe_get(
-                client, self.CROSSREF_URL, "crossref",
+                client,
+                self.CROSSREF_URL,
+                "crossref",
                 params={"query": "archaeology"},
             )
         sent = client.get.call_args.kwargs["params"]
@@ -764,8 +767,8 @@ class TestSearch:
     def test_respects_limit_after_dedup(self, mock_get):
         """Limit is enforced after deduplication."""
         mock_get.side_effect = [
-            CROSSREF_SEARCH_RESPONSE,     # 2 papers
-            OPENALEX_SEARCH_RESPONSE,     # 1 unique + 1 dup = 3 total
+            CROSSREF_SEARCH_RESPONSE,  # 2 papers
+            OPENALEX_SEARCH_RESPONSE,  # 1 unique + 1 dup = 3 total
         ]
         client = MagicMock()
         result = lit_search.cmd_search("FAIR", client, limit=2)
@@ -791,9 +794,7 @@ OPENALEX_CITED_BY_RESPONSE = {
             "display_name": "Paper that cites target",
             "publication_year": 2023,
             "cited_by_count": 25,
-            "authorships": [
-                {"author": {"display_name": "Dan Brown"}}
-            ],
+            "authorships": [{"author": {"display_name": "Dan Brown"}}],
         },
     ]
 }
@@ -810,9 +811,7 @@ class TestOpenAlexCitedBy:
             OPENALEX_CITED_BY_RESPONSE,
         ]
         client = MagicMock()
-        result = lit_search.cmd_openalex_cited_by(
-            "10.1371/journal.pcbi.1009041", client
-        )
+        result = lit_search.cmd_openalex_cited_by("10.1371/journal.pcbi.1009041", client)
         assert len(result) == 1
         assert result[0]["doi"] == "10.9999/citer-1"
 
@@ -821,9 +820,7 @@ class TestOpenAlexCitedBy:
         """DOI resolution fails → empty list."""
         mock_get.return_value = None
         client = MagicMock()
-        result = lit_search.cmd_openalex_cited_by(
-            "10.9999/nonexistent", client
-        )
+        result = lit_search.cmd_openalex_cited_by("10.9999/nonexistent", client)
         assert result == []
 
     @patch.object(lit_search, "_safe_get")
@@ -834,9 +831,7 @@ class TestOpenAlexCitedBy:
             {"results": []},
         ]
         client = MagicMock()
-        result = lit_search.cmd_openalex_cited_by(
-            "10.1371/journal.pcbi.1009041", client
-        )
+        result = lit_search.cmd_openalex_cited_by("10.1371/journal.pcbi.1009041", client)
         assert result == []
 
 
@@ -864,9 +859,7 @@ class TestBibtex:
         mock_resp.text = SAMPLE_BIBTEX
         client.get.return_value = mock_resp
 
-        result = lit_search.cmd_bibtex(
-            ["10.1038/s41598-023-41032-5"], client
-        )
+        result = lit_search.cmd_bibtex(["10.1038/s41598-023-41032-5"], client)
         assert "Walters_2023" in result
         assert "Fabrication and errors" in result
 
@@ -879,9 +872,7 @@ class TestBibtex:
         mock_resp.text = SAMPLE_BIBTEX
         client.get.return_value = mock_resp
 
-        result = lit_search.cmd_bibtex(
-            ["10.1/a", "10.1/b", "10.1/c"], client
-        )
+        result = lit_search.cmd_bibtex(["10.1/a", "10.1/b", "10.1/c"], client)
         assert result.count("Walters_2023") == 3
         assert client.get.call_count == 3
 
@@ -909,9 +900,7 @@ class TestBibtex:
         # The failing DOI is asked for twice: CrossRef, then the DOI resolver.
         client.get.side_effect = [good_resp, bad_resp, bad_resp]
 
-        result = lit_search.cmd_bibtex(
-            ["10.1/good", "10.1/bad"], client
-        )
+        result = lit_search.cmd_bibtex(["10.1/good", "10.1/bad"], client)
         assert "Walters_2023" in result
         assert "FAILED" in result
 
@@ -951,9 +940,7 @@ def _openalex_work(idx: int, citations: int = 0) -> dict:
         "display_name": f"Paper {idx}",
         "publication_year": 2024,
         "cited_by_count": citations,
-        "authorships": [
-            {"author": {"display_name": f"Author {idx}"}}
-        ],
+        "authorships": [{"author": {"display_name": f"Author {idx}"}}],
     }
 
 
@@ -968,11 +955,15 @@ class TestOpenAlexCursorPagination:
     def test_initial_request_uses_star_cursor(self, mock_get):
         """First request sets cursor=* — the OpenAlex initial token."""
         mock_get.return_value = _openalex_page(
-            [_openalex_work(1)], next_cursor=None,
+            [_openalex_work(1)],
+            next_cursor=None,
         )
         client = MagicMock()
         lit_search._openalex_paginate(
-            client, "http://test/works", {"filter": "x"}, limit=5,
+            client,
+            "http://test/works",
+            {"filter": "x"},
+            limit=5,
         )
         # Inspect the params actually passed
         first_call_kwargs = mock_get.call_args_list[0].kwargs
@@ -1000,15 +991,15 @@ class TestOpenAlexCursorPagination:
         ]
         client = MagicMock()
         results = lit_search._openalex_paginate(
-            client, "http://test/works", {"filter": "x"}, limit=100,
+            client,
+            "http://test/works",
+            {"filter": "x"},
+            limit=100,
         )
         assert len(results) == 8
         # Subsequent requests pass the cursor returned by the previous
         # page — proving cursor-token threading.
-        cursors_used = [
-            call.kwargs["params"]["cursor"]
-            for call in mock_get.call_args_list
-        ]
+        cursors_used = [call.kwargs["params"]["cursor"] for call in mock_get.call_args_list]
         assert cursors_used == ["*", "cursor-page-2", "cursor-page-3"]
 
     @patch.object(lit_search, "_safe_get")
@@ -1027,7 +1018,10 @@ class TestOpenAlexCursorPagination:
         ]
         client = MagicMock()
         results = lit_search._openalex_paginate(
-            client, "http://test/works", {"filter": "x"}, limit=75,
+            client,
+            "http://test/works",
+            {"filter": "x"},
+            limit=75,
         )
         assert len(results) == 75
 
@@ -1044,7 +1038,10 @@ class TestOpenAlexCursorPagination:
         # The helper deduplicates seen cursors, so the second time it
         # encounters "stuck" it stops.
         results = lit_search._openalex_paginate(
-            client, "http://test/works", {"filter": "x"}, limit=100,
+            client,
+            "http://test/works",
+            {"filter": "x"},
+            limit=100,
         )
         # First page (cursor=*) yields 1 record; second page
         # (cursor=stuck) yields another, then we refuse to chase
@@ -1060,7 +1057,10 @@ class TestOpenAlexCursorPagination:
         )
         client = MagicMock()
         lit_search._openalex_paginate(
-            client, "http://test/works", {"filter": "x"}, limit=10_000,
+            client,
+            "http://test/works",
+            {"filter": "x"},
+            limit=10_000,
         )
         for call in mock_get.call_args_list:
             params = call.kwargs["params"]
@@ -1072,7 +1072,10 @@ class TestOpenAlexCursorPagination:
         mock_get.return_value = None
         client = MagicMock()
         results = lit_search._openalex_paginate(
-            client, "http://test/works", {"filter": "x"}, limit=50,
+            client,
+            "http://test/works",
+            {"filter": "x"},
+            limit=50,
         )
         assert results == []
 
@@ -1108,7 +1111,9 @@ class TestCitationsLimitHonoured:
         ]
         client = MagicMock()
         result = lit_search.cmd_citations(
-            "10.1371/journal.pcbi.1009041", client, limit=100,
+            "10.1371/journal.pcbi.1009041",
+            client,
+            limit=100,
         )
         # Each OpenAlex paper has a unique DOI so no dedup collapse.
         assert len(result) == 100
@@ -1137,7 +1142,9 @@ class TestOpenAlexCitedByLimitHonoured:
         mock_get.side_effect = [oa_resolve, page_1, page_2]
         client = MagicMock()
         result = lit_search.cmd_openalex_cited_by(
-            "10.1371/journal.pcbi.1009041", client, limit=75,
+            "10.1371/journal.pcbi.1009041",
+            client,
+            limit=75,
         )
         assert len(result) == 75
 
@@ -1158,9 +1165,7 @@ class TestReferencesLimitHonoured:
         crossref_empty = {"message": {}}
         s2_empty = {"references": []}
         oa_resolve = {
-            "referenced_works": [
-                f"https://openalex.org/W{i:06d}" for i in range(100)
-            ],
+            "referenced_works": [f"https://openalex.org/W{i:06d}" for i in range(100)],
         }
         page_1 = _openalex_page(
             [_openalex_work(i) for i in range(100)],
@@ -1174,7 +1179,9 @@ class TestReferencesLimitHonoured:
         ]
         client = MagicMock()
         result = lit_search.cmd_references(
-            "10.1371/journal.pcbi.1009041", client, limit=100,
+            "10.1371/journal.pcbi.1009041",
+            client,
+            limit=100,
         )
         # Each OpenAlex work has a unique DOI; no dedup loss.
         assert len(result) == 100
@@ -1189,20 +1196,23 @@ class TestReferencesLimitHonoured:
         crossref_empty = {"message": {}}
         s2_empty = {"references": []}
         oa_resolve = {
-            "referenced_works": [
-                f"https://openalex.org/W{i:06d}" for i in range(200)
-            ],
+            "referenced_works": [f"https://openalex.org/W{i:06d}" for i in range(200)],
         }
         page_1 = _openalex_page(
             [_openalex_work(i) for i in range(30)],
             next_cursor=None,
         )
         mock_get.side_effect = [
-            crossref_empty, s2_empty, oa_resolve, page_1,
+            crossref_empty,
+            s2_empty,
+            oa_resolve,
+            page_1,
         ]
         client = MagicMock()
         result = lit_search.cmd_references(
-            "10.1371/journal.pcbi.1009041", client, limit=30,
+            "10.1371/journal.pcbi.1009041",
+            client,
+            limit=30,
         )
         assert len(result) <= 30
         # Final result is capped at limit — pin the cap.
@@ -1247,9 +1257,7 @@ class TestDedupeMergesAcrossPageBoundaries:
             "citation_count": 42,
             "source": "openalex",
         }
-        merged = lit_search._deduplicate(
-            [page_one_record, page_two_record]
-        )
+        merged = lit_search._deduplicate([page_one_record, page_two_record])
         assert len(merged) == 1
         record = merged[0]
         assert record["year"] == 2021
@@ -1314,7 +1322,6 @@ class TestDedupeMergesAcrossPageBoundaries:
 # ============================================================================
 
 
-
 class FakeResponse:
     """A minimal stand-in for ``httpx.Response``."""
 
@@ -1363,9 +1370,7 @@ def reset_pacing(monkeypatch):
 class TestPerHostPacing:
     """ET4 — the pacing floor, which deleting made the suite 17x faster."""
 
-    def test_two_calls_to_one_host_are_spaced(
-        self, monkeypatch, no_real_sleep, reset_pacing
-    ):
+    def test_two_calls_to_one_host_are_spaced(self, monkeypatch, no_real_sleep, reset_pacing):
         """The second call sleeps at least the host's floor."""
         # A frozen clock well past zero: the first call to a host sees no
         # prior timestamp and must not sleep; the second sees the first.
@@ -1387,12 +1392,8 @@ class TestPerHostPacing:
         monkeypatch.setattr(lit_search.time, "monotonic", lambda: 1000.0)
         client = RecordingClient()
 
-        lit_search._safe_get(
-            client, f"https://{lit_search.CROSSREF_HOST}/works/1", "crossref"
-        )
-        lit_search._safe_get(
-            client, f"https://{lit_search.OPENALEX_HOST}/works/1", "openalex"
-        )
+        lit_search._safe_get(client, f"https://{lit_search.CROSSREF_HOST}/works/1", "crossref")
+        lit_search._safe_get(client, f"https://{lit_search.OPENALEX_HOST}/works/1", "openalex")
 
         assert no_real_sleep == [], no_real_sleep
 
@@ -1400,9 +1401,7 @@ class TestPerHostPacing:
 class TestRetryAfterAndBackoff:
     """ET4 / ET17 — the 429 contract and the shape of the backoff."""
 
-    def test_retry_after_is_honoured_on_429(
-        self, monkeypatch, no_real_sleep, reset_pacing
-    ):
+    def test_retry_after_is_honoured_on_429(self, monkeypatch, no_real_sleep, reset_pacing):
         """A generous Retry-After wins over the exponential floor."""
         monkeypatch.setattr(lit_search.time, "monotonic", lambda: 1000.0)
         monkeypatch.setattr(lit_search, "MAX_BACKOFF", 120.0)
@@ -1440,18 +1439,12 @@ class TestRetryAfterAndBackoff:
 class TestCredentialScope:
     """E3 — the Semantic Scholar key goes to Semantic Scholar only."""
 
-    def test_the_key_is_sent_to_semantic_scholar(
-        self, monkeypatch, reset_pacing
-    ):
+    def test_the_key_is_sent_to_semantic_scholar(self, monkeypatch, reset_pacing):
         """The S2 request carries x-api-key."""
-        monkeypatch.setattr(
-            lit_search, "S2_API_KEY", "synthetic-s2-key-not-a-secret"
-        )
+        monkeypatch.setattr(lit_search, "S2_API_KEY", "synthetic-s2-key-not-a-secret")
         client = RecordingClient()
 
-        lit_search._safe_get(
-            client, f"https://{lit_search.S2_HOST}/graph/v1/paper/x", "s2"
-        )
+        lit_search._safe_get(client, f"https://{lit_search.S2_HOST}/graph/v1/paper/x", "s2")
 
         headers = client.calls[0]["headers"] or {}
         assert headers.get("x-api-key") == "synthetic-s2-key-not-a-secret"
@@ -1460,13 +1453,9 @@ class TestCredentialScope:
         "host",
         ["api.crossref.org", "api.openalex.org", "api.datacite.org"],
     )
-    def test_the_key_is_never_sent_elsewhere(
-        self, monkeypatch, reset_pacing, host
-    ):
+    def test_the_key_is_never_sent_elsewhere(self, monkeypatch, reset_pacing, host):
         """CrossRef, OpenAlex, and DataCite see no Semantic Scholar key."""
-        monkeypatch.setattr(
-            lit_search, "S2_API_KEY", "synthetic-s2-key-not-a-secret"
-        )
+        monkeypatch.setattr(lit_search, "S2_API_KEY", "synthetic-s2-key-not-a-secret")
         client = RecordingClient()
 
         lit_search._safe_get(client, f"https://{host}/works/10.1/a", host)
@@ -1476,9 +1465,7 @@ class TestCredentialScope:
 
     def test_the_shared_client_carries_no_credential(self, monkeypatch):
         """The client's own headers must hold neither key."""
-        monkeypatch.setattr(
-            lit_search, "S2_API_KEY", "synthetic-s2-key-not-a-secret"
-        )
+        monkeypatch.setattr(lit_search, "S2_API_KEY", "synthetic-s2-key-not-a-secret")
         client = lit_search._get_client()
         try:
             assert "x-api-key" not in client.headers
@@ -1508,9 +1495,7 @@ class TestCredentialScope:
 
         lit_search._enforce_credential_scope(request)
 
-        assert request.headers["x-api-key"] == (
-            "synthetic-s2-key-not-a-secret"
-        )
+        assert request.headers["x-api-key"] == ("synthetic-s2-key-not-a-secret")
 
     def test_the_client_installs_the_hook(self):
         """The scope guard must be wired into the shared client."""
@@ -1536,9 +1521,7 @@ class TestMissingAuthorShapes:
 
         normalised = lit_search._normalise_crossref(record)
 
-        assert normalised["authors"] == [
-            "The Synthetic Survey Consortium"
-        ]
+        assert normalised["authors"] == ["The Synthetic Survey Consortium"]
 
     def test_a_family_only_author_survives(self):
         """A mononym or family-only record keeps its author."""
@@ -1548,9 +1531,7 @@ class TestMissingAuthorShapes:
             "author": [{"family": "Marinova"}],
         }
 
-        assert lit_search._normalise_crossref(record)["authors"] == [
-            "Marinova"
-        ]
+        assert lit_search._normalise_crossref(record)["authors"] == ["Marinova"]
 
     def test_null_date_parts_yield_no_year(self):
         """``[[None]]`` must produce None, not a crash or a "None" year."""
@@ -1569,18 +1550,14 @@ class TestMissingAuthorShapes:
             "title": ["Terraces <i>in situ</i>"],
         }
 
-        assert lit_search._normalise_crossref(record)["title"] == (
-            "Terraces <i>in situ</i>"
-        )
+        assert lit_search._normalise_crossref(record)["title"] == ("Terraces <i>in situ</i>")
 
     def test_a_null_openalex_authorship_is_tolerated(self):
         """``authorships[].author: null`` must not raise."""
         record = {
             "id": "https://openalex.org/W1",
             "display_name": "A Work",
-            "authorships": [{"author": None}, {"author": {
-                "display_name": "Iva Marinova"
-            }}],
+            "authorships": [{"author": None}, {"author": {"display_name": "Iva Marinova"}}],
         }
 
         normalised = lit_search._normalise_openalex(record)
@@ -1600,9 +1577,7 @@ class TestBibtexKeyCollisions:
     def test_a_repeated_key_is_suffixed(self):
         """The second entry gains a letter suffix."""
         seen: set[str] = set()
-        first = lit_search._dedupe_bibtex_key(
-            "@article{Marinova2031,\n  title = {First},\n}", seen
-        )
+        first = lit_search._dedupe_bibtex_key("@article{Marinova2031,\n  title = {First},\n}", seen)
         second = lit_search._dedupe_bibtex_key(
             "@article{Marinova2031,\n  title = {Second},\n}", seen
         )
@@ -1621,17 +1596,14 @@ class TestBibtexKeyCollisions:
         """Two DOIs whose entries share a key both survive the run."""
         client = RecordingClient(
             [
-                FakeResponse(
-                    200, text="@article{Marinova2031,\n  title = {A},\n}"
-                ),
-                FakeResponse(
-                    200, text="@article{Marinova2031,\n  title = {B},\n}"
-                ),
+                FakeResponse(200, text="@article{Marinova2031,\n  title = {A},\n}"),
+                FakeResponse(200, text="@article{Marinova2031,\n  title = {B},\n}"),
             ]
         )
 
         out = lit_search.cmd_bibtex(
-            ["10.1/a", "10.1/b"], client  # type: ignore[arg-type]
+            ["10.1/a", "10.1/b"],
+            client,  # type: ignore[arg-type]
         )
 
         assert "@article{Marinova2031," in out
@@ -1675,7 +1647,9 @@ def test_l1_a_keyed_request_logs_no_key(keyed, caplog, capfd):
     caplog.set_level(logging.DEBUG)
     with _client_on(answer) as client:
         data = lit_search._safe_get(
-            client, f"https://{lit_search.OPENALEX_HOST}/works", "openalex",
+            client,
+            f"https://{lit_search.OPENALEX_HOST}/works",
+            "openalex",
             params={"search": "fair vocabularies"},
         )
     assert data == {"results": []}
@@ -1693,7 +1667,9 @@ def test_l1_a_failed_keyed_request_reports_no_key(keyed, caplog, capfd):
     caplog.set_level(logging.DEBUG)
     with _client_on(refuse) as client:
         data = lit_search._safe_get(
-            client, f"https://{lit_search.OPENALEX_HOST}/works", "openalex",
+            client,
+            f"https://{lit_search.OPENALEX_HOST}/works",
+            "openalex",
             params={"search": "fair vocabularies"},
         )
     assert data is None
@@ -1705,8 +1681,9 @@ def test_l1_a_failed_keyed_request_reports_no_key(keyed, caplog, capfd):
 
 def test_l1_exception_text_in_the_output_is_redacted(keyed):
     def refuse(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError(f"cannot reach https://x.invalid/?api_key={SYNTHETIC_KEY}",
-                                 request=request)
+        raise httpx.ConnectError(
+            f"cannot reach https://x.invalid/?api_key={SYNTHETIC_KEY}", request=request
+        )
 
     with _client_on(refuse) as client:
         output = lit_search.cmd_bibtex(["10.1371/journal.pcbi.1009041"], client)
@@ -1733,8 +1710,10 @@ class TestCrossrefSubtitleAndReferenceCount:
     """
 
     def test_the_subtitle_is_joined_to_the_title(self):
-        record = {"title": ["Mobilization as Mediation"],
-                  "subtitle": ["Implementing a Tablet-Based Recording System"]}
+        record = {
+            "title": ["Mobilization as Mediation"],
+            "subtitle": ["Implementing a Tablet-Based Recording System"],
+        }
         assert lit_search._normalise_crossref(record)["title"] == (
             "Mobilization as Mediation: Implementing a Tablet-Based Recording System"
         )
@@ -1760,6 +1739,7 @@ class TestCrossrefSubtitleAndReferenceCount:
         assert lit_search._normalise_crossref(record)["reference_count"] == 67
         assert lit_search._normalise_crossref({"title": ["T"]})["reference_count"] is None
 
+
 SUBTITLE_CASES = [
     ("Disinformation", "Information", "Disinformation: Information"),
     ("Who were they?", "People of the plain", "Who were they? People of the plain"),
@@ -1770,8 +1750,11 @@ SUBTITLE_CASES = [
     ("X: Strasse", "Stra\u00dfe", "X: Strasse"),  # folding changes the length
     ("A Study:", "Part two", "A Study: Part two"),
     # Greek: "The city", "One".
-    ("\u0397 \u03c0\u03cc\u03bb\u03b7", "\u039c\u03b9\u03b1",
-     "\u0397 \u03c0\u03cc\u03bb\u03b7: \u039c\u03b9\u03b1"),
+    (
+        "\u0397 \u03c0\u03cc\u03bb\u03b7",
+        "\u039c\u03b9\u03b1",
+        "\u0397 \u03c0\u03cc\u03bb\u03b7: \u039c\u03b9\u03b1",
+    ),
 ]
 
 
@@ -1808,10 +1791,12 @@ class TestBibtexBeyondCrossref:
 
     @patch.object(lit_search, "_rate_limit")
     def test_a_doi_crossref_does_not_hold_is_fetched_from_the_resolver(self, mock_rl):
-        client = self._client({
-            lit_search.CROSSREF_BASE: (404, ""),
-            lit_search.DOI_RESOLVER: (200, "@misc{Arxiv_2024, title={A preprint}}"),
-        })
+        client = self._client(
+            {
+                lit_search.CROSSREF_BASE: (404, ""),
+                lit_search.DOI_RESOLVER: (200, "@misc{Arxiv_2024, title={A preprint}}"),
+            }
+        )
         result = lit_search.cmd_bibtex(["10.48550/arXiv.2409.13740"], client)
         assert "Arxiv_2024" in result and "FAILED" not in result
         resolver_call = client.get.call_args_list[-1]
@@ -1819,9 +1804,7 @@ class TestBibtexBeyondCrossref:
         assert resolver_call.kwargs["follow_redirects"] is True
         assert resolver_call.kwargs["headers"]["Accept"] == "application/x-bibtex"
 
-    def test_the_resolver_leg_carries_no_contact_or_key_at_any_hop(
-        self, monkeypatch, no_delays
-    ):
+    def test_the_resolver_leg_carries_no_contact_or_key_at_any_hop(self, monkeypatch, no_delays):
         """Review of 9f57dc2: the doi.org leg identifies the tool alone, at every redirect.
 
         CrossRef keeps the polite-pool contact address. Before, the resolver
@@ -1857,7 +1840,10 @@ class TestBibtexBeyondCrossref:
         result = lit_search.cmd_bibtex(["10.5281/zenodo.24128012"], client)
         assert "Synthetic_2026" in result and "FAILED" not in result
         assert [r.url.host for r in seen] == [
-            lit_search.CROSSREF_HOST, "doi.org", "data.crosscite.org", "api.datacite.org",
+            lit_search.CROSSREF_HOST,
+            "doi.org",
+            "data.crosscite.org",
+            "api.datacite.org",
         ]
         assert seen[0].headers["user-agent"] == polite
         for hop in seen[1:]:
@@ -1876,11 +1862,13 @@ class TestBibtexBeyondCrossref:
 
     @patch.object(lit_search, "_rate_limit")
     def test_the_closing_line_counts_entries_and_names_the_missing(self, mock_rl, caplog):
-        client = self._client({
-            f"{lit_search.CROSSREF_BASE}/works/10.1%2Fgood": (200, SAMPLE_BIBTEX),
-            lit_search.CROSSREF_BASE: (404, ""),
-            lit_search.DOI_RESOLVER: (404, ""),
-        })
+        client = self._client(
+            {
+                f"{lit_search.CROSSREF_BASE}/works/10.1%2Fgood": (200, SAMPLE_BIBTEX),
+                lit_search.CROSSREF_BASE: (404, ""),
+                lit_search.DOI_RESOLVER: (404, ""),
+            }
+        )
         with caplog.at_level("WARNING"):
             result = lit_search.cmd_bibtex(["10.1/good", "10.9/absent"], client)
         assert "% FAILED: 10.9/absent (CrossRef: HTTP 404; doi.org: HTTP 404)" in result
@@ -1896,15 +1884,18 @@ class TestBibtexBeyondCrossref:
     @patch.object(lit_search, "_rate_limit")
     def test_a_landing_page_is_not_written_as_an_entry(self, mock_rl, caplog):
         """A registry without BibTeX answers 200 with HTML; that is a miss."""
-        client = self._client({
-            lit_search.CROSSREF_BASE: (404, ""),
-            lit_search.DOI_RESOLVER: (200, "<!DOCTYPE html><html><body>Landing</body></html>"),
-        })
+        client = self._client(
+            {
+                lit_search.CROSSREF_BASE: (404, ""),
+                lit_search.DOI_RESOLVER: (200, "<!DOCTYPE html><html><body>Landing</body></html>"),
+            }
+        )
         with caplog.at_level("WARNING"):
             result = lit_search.cmd_bibtex(["10.5555/no-bibtex"], client)
         assert "<html" not in result
-        assert ("% FAILED: 10.5555/no-bibtex (CrossRef: HTTP 404; "
-                "doi.org: no complete BibTeX record)") in result
+        assert (
+            "% FAILED: 10.5555/no-bibtex (CrossRef: HTTP 404; doi.org: no complete BibTeX record)"
+        ) in result
         assert "0 of 1 DOIs produced an entry; none for: 10.5555/no-bibtex" in caplog.text
 
 
@@ -1916,28 +1907,34 @@ class TestBibtexRecordValidation:
     off before their closing brace.
     """
 
-    @pytest.mark.parametrize("text", [
-        "@comment{No entry is available}",
-        '@string{journal = "Example"}',
-        '@preamble{"Example"}',
-        "@",
-        "@article{broken, title={Synthetic}",
-        "@article{nofields}",
-        "@article{, title={No key}}",
-        "<!DOCTYPE html><html><body>@article{x, title={y}}",
-        "% @article{commented, title={Out}}",
-        "",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "@comment{No entry is available}",
+            '@string{journal = "Example"}',
+            '@preamble{"Example"}',
+            "@",
+            "@article{broken, title={Synthetic}",
+            "@article{nofields}",
+            "@article{, title={No key}}",
+            "<!DOCTYPE html><html><body>@article{x, title={y}}",
+            "% @article{commented, title={Out}}",
+            "",
+        ],
+    )
     def test_not_a_record(self, text):
         assert lit_search._bibtex_record(text) is None
 
-    @pytest.mark.parametrize("text, key", [
-        (SAMPLE_BIBTEX, "Walters_2023"),
-        ("% made by a registry\n@article{Lead_2020, title={Leading comment}}", "Lead_2020"),
-        ('@string{j = "J"}\n@article{After_2021, journal=j, title={x}}', "After_2021"),
-        ("@misc(Paren_2022, title={Parentheses {nested}})", "Paren_2022"),
-        ("  \n@Article{Case_2019,\n  title = {Mixed case}\n}\n", "Case_2019"),
-    ])
+    @pytest.mark.parametrize(
+        "text, key",
+        [
+            (SAMPLE_BIBTEX, "Walters_2023"),
+            ("% made by a registry\n@article{Lead_2020, title={Leading comment}}", "Lead_2020"),
+            ('@string{j = "J"}\n@article{After_2021, journal=j, title={x}}', "After_2021"),
+            ("@misc(Paren_2022, title={Parentheses {nested}})", "Paren_2022"),
+            ("  \n@Article{Case_2019,\n  title = {Mixed case}\n}\n", "Case_2019"),
+        ],
+    )
     def test_a_record(self, text, key):
         record = lit_search._bibtex_record(text)
         assert record is not None and key in record
@@ -1958,25 +1955,27 @@ class TestBibtexRecordValidation:
         """Review finding R25: note={} must not discard a usable record."""
         for empty in ("note={}", "abstract = {  }"):
             record = lit_search._bibtex_record(
-                f"@article{{key, title={{Synthetic}}, year={{2024}}, {empty}}}")
+                f"@article{{key, title={{Synthetic}}, year={{2024}}, {empty}}}"
+            )
             assert record is not None
             assert "Synthetic" in record and "2024" in record
             assert "note" not in record and "abstract" not in record
 
     def test_a_string_macro_is_expanded_into_the_record(self):
         record = lit_search._bibtex_record(
-            '@string{j="Synthetic Journal"}\n@article{key, journal=j}')
+            '@string{j="Synthetic Journal"}\n@article{key, journal=j}'
+        )
         assert record is not None
         assert "Synthetic Journal" in record
         assert "@string" not in record.lower()
 
     def test_an_undefined_macro_is_not_a_record(self):
-        assert lit_search._bibtex_record(
-            "@article{key, journal=undefinedmacro, title={x}}") is None
+        assert lit_search._bibtex_record("@article{key, journal=undefinedmacro, title={x}}") is None
 
     def test_standard_months_and_datacite_types_are_kept(self):
         record = lit_search._bibtex_record(
-            "@dataset{Zen_2024, title={A dataset}, year={2024}, month=sep}")
+            "@dataset{Zen_2024, title={A dataset}, year={2024}, month=sep}"
+        )
         assert record is not None and record.startswith("@dataset{Zen_2024,")
         assert "September" in record
 
@@ -2007,10 +2006,12 @@ class TestBibtexRecordValidation:
 
     @patch.object(lit_search, "_rate_limit")
     def test_a_directive_from_both_sources_counts_as_missing(self, mock_rl, caplog):
-        client = TestBibtexBeyondCrossref._client({
-            lit_search.CROSSREF_BASE: (200, "@comment{No entry is available}"),
-            lit_search.DOI_RESOLVER: (200, "@article{broken, title={Synthetic}"),
-        })
+        client = TestBibtexBeyondCrossref._client(
+            {
+                lit_search.CROSSREF_BASE: (200, "@comment{No entry is available}"),
+                lit_search.DOI_RESOLVER: (200, "@article{broken, title={Synthetic}"),
+            }
+        )
         with caplog.at_level("WARNING"):
             result = lit_search.cmd_bibtex(["10.1/x"], client)
         assert "@comment" not in result and "broken" not in result
@@ -2018,10 +2019,12 @@ class TestBibtexRecordValidation:
 
     @patch.object(lit_search, "_rate_limit")
     def test_an_invalid_crossref_answer_falls_back_to_the_resolver(self, mock_rl):
-        client = TestBibtexBeyondCrossref._client({
-            lit_search.CROSSREF_BASE: (200, "@preamble{\"x\"}"),
-            lit_search.DOI_RESOLVER: (200, "@misc{Good_2024, title={From the resolver}}"),
-        })
+        client = TestBibtexBeyondCrossref._client(
+            {
+                lit_search.CROSSREF_BASE: (200, '@preamble{"x"}'),
+                lit_search.DOI_RESOLVER: (200, "@misc{Good_2024, title={From the resolver}}"),
+            }
+        )
         result = lit_search.cmd_bibtex(["10.1/x"], client)
         assert "Good_2024" in result and "FAILED" not in result
         assert client.get.call_count == 2
@@ -2033,7 +2036,10 @@ class TestBibtexFallbackAfterErrors:
     @patch("time.sleep")
     @patch.object(lit_search, "_rate_limit")
     def test_an_exhausted_crossref_connection_error_tries_the_resolver(
-        self, mock_rl, mock_sleep, caplog,
+        self,
+        mock_rl,
+        mock_sleep,
+        caplog,
     ):
         def get(url, **kwargs):
             if url.startswith(lit_search.CROSSREF_BASE):
@@ -2126,9 +2132,7 @@ class TestDoiExists:
     def test_an_arxiv_doi_crossref_lacks_resolves_at_the_resolver(self, reset_pacing):
         doi = "10.48550/arXiv.2303.08774"
         seen = []
-        client = self._answering(
-            200, self._with_url(doi, "https://arxiv.org/abs/2303.08774"), seen
-        )
+        client = self._answering(200, self._with_url(doi, "https://arxiv.org/abs/2303.08774"), seen)
         result = lit_search.cmd_doi_exists(doi, client)
         assert result["state"] == "resolves"
         assert result["url"] == "https://arxiv.org/abs/2303.08774"
@@ -2158,9 +2162,7 @@ class TestDoiExists:
         assert result["state"] == "not_found" and result["url"] is None
         assert (result["http_status"], result["response_code"]) == (404, 100)
 
-    def test_a_handle_with_no_url_value_is_registered_but_does_not_resolve(
-        self, reset_pacing
-    ):
+    def test_a_handle_with_no_url_value_is_registered_but_does_not_resolve(self, reset_pacing):
         """responseCode 200: the handle exists but holds no value of the type asked for.
 
         Review finding R38: the reason claims no more than the lookup read. A
@@ -2224,10 +2226,26 @@ class TestDoiExists:
             {"value": "https://host.example/"},
         ],
         ids=[
-            "arbitrary-text", "relative", "no-scheme", "ftp", "javascript", "no-host",
-            "unclosed-bracket", "bad-port", "space", "surrounding-space", "control",
-            "bidi-override", "rfc3986-forbidden", "base64-arbitrary-text", "bad-base64",
-            "bad-hex", "hex-not-utf8", "admin-format", "undocumented-format", "no-format",
+            "arbitrary-text",
+            "relative",
+            "no-scheme",
+            "ftp",
+            "javascript",
+            "no-host",
+            "unclosed-bracket",
+            "bad-port",
+            "space",
+            "surrounding-space",
+            "control",
+            "bidi-override",
+            "rfc3986-forbidden",
+            "base64-arbitrary-text",
+            "bad-base64",
+            "bad-hex",
+            "hex-not-utf8",
+            "admin-format",
+            "undocumented-format",
+            "no-format",
         ],
     )
     def test_a_url_value_this_check_cannot_use_never_resolves(self, reset_pacing, data):
@@ -2238,9 +2256,13 @@ class TestDoiExists:
         which the verifier keeps as unverifiable.
         """
         doi = "10.1000/odd-url"
-        body = {"responseCode": 1, "handle": doi, "values": [
-            {"index": 1, "type": "URL", "data": data},
-        ]}
+        body = {
+            "responseCode": 1,
+            "handle": doi,
+            "values": [
+                {"index": 1, "type": "URL", "data": data},
+            ],
+        }
         result = lit_search.cmd_doi_exists(doi, self._answering(200, body))
         assert result["state"] == "registered_no_url" and result["url"] is None
         assert "no supported URL value" in result["reason"]
@@ -2272,9 +2294,13 @@ class TestDoiExists:
         """Documented string, base64, and hex values, decoded; the target is never fetched."""
         doi = "10.1000/good-url"
         seen = []
-        body = {"responseCode": 1, "handle": doi, "values": [
-            {"index": 1, "type": "URL", "data": data},
-        ]}
+        body = {
+            "responseCode": 1,
+            "handle": doi,
+            "values": [
+                {"index": 1, "type": "URL", "data": data},
+            ],
+        }
         result = lit_search.cmd_doi_exists(doi, self._answering(200, body, seen))
         assert result["state"] == "resolves" and result["url"] == url
         assert "registration evidence only" in result["reason"]
@@ -2282,10 +2308,18 @@ class TestDoiExists:
 
     def test_an_unusable_url_value_gives_way_to_a_usable_one(self, reset_pacing):
         doi = "10.1000/two-urls"
-        body = {"responseCode": 1, "handle": doi, "values": [
-            {"index": 1, "type": "URL", "data": {"format": "string", "value": "not a URL"}},
-            {"index": 2, "type": "URL", "data": {"format": "string", "value": "https://h.example/"}},
-        ]}
+        body = {
+            "responseCode": 1,
+            "handle": doi,
+            "values": [
+                {"index": 1, "type": "URL", "data": {"format": "string", "value": "not a URL"}},
+                {
+                    "index": 2,
+                    "type": "URL",
+                    "data": {"format": "string", "value": "https://h.example/"},
+                },
+            ],
+        }
         result = lit_search.cmd_doi_exists(doi, self._answering(200, body))
         assert result["state"] == "resolves" and result["url"] == "https://h.example/"
 
@@ -2346,9 +2380,7 @@ class TestDoiExists:
         seen = []
         client = self._answering(404, {"responseCode": 100, "handle": doi}, seen)
         result = lit_search.cmd_doi_exists(doi, client)
-        assert seen[0].url.raw_path == (
-            b"/api/handles/10.1000/a%23b%3Fc%3Dd%25e%20f?type=URL"
-        )
+        assert seen[0].url.raw_path == (b"/api/handles/10.1000/a%23b%3Fc%3Dd%25e%20f?type=URL")
         assert seen[0].url.query == b"type=URL"
         assert result["state"] == "not_found"
 
@@ -2459,7 +2491,9 @@ class TestDoiExists:
         monkeypatch.setattr(lit_search, "OPENALEX_API_KEY", SYNTHETIC_KEY)
         seen = []
         client = self._answering(
-            200, self._with_url("10.1000/1"), seen,
+            200,
+            self._with_url("10.1000/1"),
+            seen,
             headers={
                 "User-Agent": "lit-scout/1.0 (mailto:someone@example.org)",
                 "x-api-key": "synthetic-s2-key-not-a-secret",
@@ -2546,7 +2580,9 @@ class TestAgencyRecordFallback:
             "10.5281/zenodo.24128012", _agency_client(DATACITE_CSL, seen)
         )
         assert [r.url.host for r in seen] == [
-            *INDEX_HOSTS, "doi.org", "data.crosscite.org",
+            *INDEX_HOSTS,
+            "doi.org",
+            "data.crosscite.org",
         ]
         assert result["title"] == "A synthetic deposit no index holds yet"
         assert result["authors"] == ["Synthetic, Author A."]
@@ -2594,21 +2630,21 @@ class TestAgencyRecordFallback:
     def test_the_agency_is_not_asked_when_an_index_has_a_record(self, no_delays):
         seen = []
         client = _agency_client(
-            DATACITE_CSL, seen,
+            DATACITE_CSL,
+            seen,
             indexes={lit_search.CROSSREF_HOST: httpx.Response(200, json=CROSSREF_WORK)},
         )
         result = lit_search.cmd_metadata("10.1371/journal.pcbi.1009041", client)
         assert result["sources"] == ["crossref"]
         assert all(r.url.host in INDEX_HOSTS for r in seen), [str(r.url) for r in seen]
 
-    def test_the_request_asks_for_csl_json_and_carries_no_credential(
-        self, no_delays, monkeypatch
-    ):
+    def test_the_request_asks_for_csl_json_and_carries_no_credential(self, no_delays, monkeypatch):
         monkeypatch.setattr(lit_search, "S2_API_KEY", "synthetic-s2-key-not-a-secret")
         monkeypatch.setattr(lit_search, "OPENALEX_API_KEY", SYNTHETIC_KEY)
         seen = []
         client = _agency_client(
-            DATACITE_CSL, seen,
+            DATACITE_CSL,
+            seen,
             headers={
                 "User-Agent": "lit-scout/1.0 (mailto:someone@example.org)",
                 "Accept": "application/json",
@@ -2662,17 +2698,18 @@ class TestAgencyRecordFallback:
             {**DATACITE_CSL, "title": "   "},
         ],
         ids=[
-            "html", "empty-body", "http-404", "http-500", "json-list", "no-title",
+            "html",
+            "empty-body",
+            "http-404",
+            "http-500",
+            "json-list",
+            "no-title",
             "blank-title",
         ],
     )
-    def test_an_answer_that_is_not_a_titled_record_gives_no_metadata(
-        self, no_delays, agency
-    ):
+    def test_an_answer_that_is_not_a_titled_record_gives_no_metadata(self, no_delays, agency):
         seen = []
-        result = lit_search.cmd_metadata(
-            "10.5281/zenodo.24128012", _agency_client(agency, seen)
-        )
+        result = lit_search.cmd_metadata("10.5281/zenodo.24128012", _agency_client(agency, seen))
         assert result == {"error": "No metadata found for DOI: 10.5281/zenodo.24128012"}
 
     def test_no_answer_from_doi_org_gives_no_metadata(self, no_delays):
@@ -2741,9 +2778,7 @@ class TestNormaliseCsl:
         with_container = {"title": "T", "container-title": ["Journal"], "publisher": "P"}
         publisher_only = {"title": "T", "publisher": "東京大学"}
         assert lit_search._normalise_csl(with_container, "10.1/x")["venue"] == "Journal"
-        assert lit_search._normalise_csl(publisher_only, "10.1/x")["venue"] == (
-            "東京大学"
-        )
+        assert lit_search._normalise_csl(publisher_only, "10.1/x")["venue"] == ("東京大学")
         assert lit_search._normalise_csl({"title": "T"}, "10.1/x")["venue"] is None
 
     def test_a_doi_differing_only_in_basic_latin_case_is_the_same(self):
@@ -2785,31 +2820,48 @@ class TestNormaliseCsl:
         assert record["citation_count"] is None
 
 
-
 class TestTargetUrlPercentEscapes:
     """Review finding R38, last part (GPT in Codex, lane astra, 12 Nov 2026): a registered
     target URL with a malformed percent escape is not a usable URL; valid escapes are."""
 
-    @pytest.mark.parametrize("url", [
-        "https://%/", "https://host.example/%ZZ", "https://host.example/%",
-        "https://ho%2st.example/", "https://host.example/a%2",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://%/",
+            "https://host.example/%ZZ",
+            "https://host.example/%",
+            "https://ho%2st.example/",
+            "https://host.example/a%2",
+        ],
+    )
     def test_a_malformed_escape_is_refused(self, url):
         assert lit_search._usable_url(url) is False
 
-    @pytest.mark.parametrize("url", [
-        "https://host.example/a%25b", "https://host.example/a%23b",
-        "https://host.example/caf%C3%A9", "https://host.example/%e2%82%ac",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://host.example/a%25b",
+            "https://host.example/a%23b",
+            "https://host.example/caf%C3%A9",
+            "https://host.example/%e2%82%ac",
+        ],
+    )
     def test_a_valid_escape_is_accepted(self, url):
         assert lit_search._usable_url(url) is True
 
     def test_a_refused_target_leaves_the_doi_registered_without_a_url(self, reset_pacing):
         doi = "10.1000/bad-escape"
-        body = {"responseCode": 1, "handle": doi, "values": [
-            {"index": 1, "type": "URL",
-             "data": {"format": "string", "value": "https://host.example/%ZZ"}},
-        ]}
+        body = {
+            "responseCode": 1,
+            "handle": doi,
+            "values": [
+                {
+                    "index": 1,
+                    "type": "URL",
+                    "data": {"format": "string", "value": "https://host.example/%ZZ"},
+                },
+            ],
+        }
         client = TestDoiExists._answering(200, body)
         result = lit_search.cmd_doi_exists(doi, client)
         assert result["state"] == "registered_no_url" and result["url"] is None

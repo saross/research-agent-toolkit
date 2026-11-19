@@ -86,7 +86,9 @@ class Watch:
         sha = self.sandbox.commit(path, text)
         subprocess.run(
             ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-            cwd=self.sandbox.work, env=self.sandbox.env, check=True,
+            cwd=self.sandbox.work,
+            env=self.sandbox.env,
+            check=True,
         )
         return sha
 
@@ -258,8 +260,12 @@ def _watch_in_process(watch, monkeypatch, after_listing) -> int:
 
 
 def _move_public_main(watch, sha: str) -> None:
-    subprocess.run(["git", "update-ref", "refs/heads/main", sha], cwd=watch.sandbox.public,
-                   env=watch.sandbox.env, check=True)
+    subprocess.run(
+        ["git", "update-ref", "refs/heads/main", sha],
+        cwd=watch.sandbox.public,
+        env=watch.sandbox.env,
+        check=True,
+    )
 
 
 def _steady_state(watch) -> str:
@@ -286,16 +292,18 @@ def test_w1_a_ref_moved_back_before_the_fetch_is_still_read(watch, monkeypatch):
     assert "secret:fake-rule" in watch.report.read_text()
 
 
-def test_w1_an_advertised_object_that_cant_be_fetched_is_never_counted_as_read(
-    watch, monkeypatch
-):
+def test_w1_an_advertised_object_that_cant_be_fetched_is_never_counted_as_read(watch, monkeypatch):
     clean = _steady_state(watch)
     leaked = watch.publish_unchecked("config.txt", f"key = {FAKE_SECRET}\n")
 
     def correct_and_collect():
         _move_public_main(watch, clean)
-        subprocess.run(["git", "gc", "-q", "--prune=now"], cwd=watch.sandbox.public,
-                       env=watch.sandbox.env, check=True)
+        subprocess.run(
+            ["git", "gc", "-q", "--prune=now"],
+            cwd=watch.sandbox.public,
+            env=watch.sandbox.env,
+            check=True,
+        )
 
     assert _watch_in_process(watch, monkeypatch, correct_and_collect) == INCOMPLETE
     report = watch.report.read_text()
@@ -354,8 +362,9 @@ def test_w2_a_first_state_file_is_upgraded_with_its_history_marked_unread(watch)
     refs = watch.sandbox.remote_refs().split()
     path = watch.sandbox.guard / "watch" / "state.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"repos": {PUBLIC_NAME: {"refs": {refs[1]: refs[0]}}},
-                                "findings": []}))
+    path.write_text(
+        json.dumps({"repos": {PUBLIC_NAME: {"refs": {refs[1]: refs[0]}}}, "findings": []})
+    )
     result = watch.run()
     assert result.returncode == 0, result.stdout
     assert "initial audit pending" in result.stdout
@@ -571,8 +580,9 @@ def test_r2_repositories_failing_or_cut_off_dont_starve_the_rest(watch, monkeypa
         listing = engine.remote_refs
 
         def listing_with_trouble(git, url, outside):
-            name = next((n for n in ("aaa", "aab", "aac", "zzz") if url.endswith(n + ".git")),
-                        "public")
+            name = next(
+                (n for n in ("aaa", "aab", "aac", "zzz") if url.endswith(n + ".git")), "public"
+            )
             visits[-1].append(name)
             if name in ("aaa", "aab"):
                 raise engine.GuardError("asking the remote what it has failed")

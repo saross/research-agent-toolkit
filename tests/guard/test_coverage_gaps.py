@@ -36,8 +36,11 @@ def _github_world(sandbox, visibility: str) -> None:
     """
     fake = sandbox.root / "fake-bin"
     fake.mkdir()
-    payload = {"visibility": visibility, "private": visibility == "private",
-               "full_name": "Test/Public"}
+    payload = {
+        "visibility": visibility,
+        "private": visibility == "private",
+        "full_name": "Test/Public",
+    }
     gh = fake / "gh"
     gh.write_text(f"#!/bin/sh\ncat <<'EOF'\n{json.dumps(payload)}\nEOF\n")
     gh.chmod(0o755)
@@ -45,7 +48,7 @@ def _github_world(sandbox, visibility: str) -> None:
     ssh.write_text(
         "#!/bin/sh\n"
         f'case "$*" in *upload-pack*) exec git upload-pack {sandbox.public};;\n'
-        f'  *receive-pack*) exec git receive-pack {sandbox.public};; esac\nexit 1\n'
+        f"  *receive-pack*) exec git receive-pack {sandbox.public};; esac\nexit 1\n"
     )
     ssh.chmod(0o755)
     sandbox.env["PATH"] = f"{fake}:{sandbox.env['PATH']}"
@@ -96,7 +99,9 @@ def test_range_is_asked_of_the_push_url_not_the_fetch_url(sandbox):
     sha = sandbox.commit("a.txt", f"{PERSON}\n")
     subprocess.run(
         ["git", "push", "-q", "--no-verify", str(sandbox.private), "HEAD:refs/heads/main"],
-        cwd=sandbox.work, env=sandbox.env, check=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     )
     sandbox.git("remote", "add", "split", str(sandbox.private))
     sandbox.git("remote", "set-url", "--push", "split", str(sandbox.public))
@@ -214,8 +219,9 @@ def test_never_public_route_withholds_paths(sandbox):
 
 def test_audit_as_private_withholds_paths(sandbox):
     sandbox.commit(f"{PERSON.replace(' ', '-')}.txt", f"token = {FAKE_SECRET}\n")
-    result = sandbox.engine("audit", "--repo", str(sandbox.work), "--name", "x/y", "--as",
-                            "private", "--rev", "HEAD")
+    result = sandbox.engine(
+        "audit", "--repo", str(sandbox.work), "--name", "x/y", "--as", "private", "--rev", "HEAD"
+    )
     assert "fake-rule" in result.stdout
     assert PERSON.replace(" ", "-") not in result.stdout
 
@@ -234,8 +240,7 @@ def test_gitleaks_is_asked_to_redact(sandbox):
 def test_a_leak_reported_with_an_empty_list_blocks(sandbox):
     """M29."""
     sandbox.gitleaks.write_text(
-        '#!/bin/sh\nwhile [ "$1" != "--report-path" ]; do shift; done\n'
-        'printf "[]" > "$2"\nexit 7\n'
+        '#!/bin/sh\nwhile [ "$1" != "--report-path" ]; do shift; done\nprintf "[]" > "$2"\nexit 7\n'
     )
     assert_blocked(sandbox.push(), sandbox, sandbox.head())
 
@@ -253,8 +258,9 @@ def test_findings_give_the_right_file_and_line(sandbox):
 def test_audit_runs_the_secret_scan(sandbox):
     """M16."""
     sandbox.commit("a.txt", f"token = {FAKE_SECRET}\n")
-    result = sandbox.engine("audit", "--repo", str(sandbox.work), "--name", "x/y", "--as",
-                            "private", "--rev", "HEAD")
+    result = sandbox.engine(
+        "audit", "--repo", str(sandbox.work), "--name", "x/y", "--as", "private", "--rev", "HEAD"
+    )
     assert "secret:fake-rule" in result.stdout
 
 
@@ -263,8 +269,9 @@ def test_audit_applies_the_repository_policy(sandbox):
     sandbox.policy["repos"][PUBLIC_NAME]["allowed_paths"] = ["README.md"]
     sandbox.save_policy()
     sandbox.commit("wiki/notes.md", "fine\n")
-    result = sandbox.engine("audit", "--repo", str(sandbox.work), "--name", PUBLIC_NAME,
-                            "--rev", "HEAD")
+    result = sandbox.engine(
+        "audit", "--repo", str(sandbox.work), "--name", PUBLIC_NAME, "--rev", "HEAD"
+    )
     assert "path-not-allowed" in result.stdout
 
 
@@ -328,8 +335,12 @@ def test_allowed_path_matching_is_exact(sandbox, allowed, path, blocks):
         path != "README.md.bak" and allowed != []
     )
     sandbox.save_policy()
-    subprocess.run(["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-                   cwd=sandbox.work, env=sandbox.env, check=True)
+    subprocess.run(
+        ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
+    )
     sha = sandbox.commit(path, "fine\n")
     result = sandbox.push()
     if blocks:
@@ -375,12 +386,33 @@ def test_local_destination_still_hands_over(sandbox):
 def test_every_documented_client_hook_has_a_pass_through_stub(sandbox):
     """M19: git's documented hooks, from githooks(5) for git 2.48."""
     documented = {
-        "applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit", "pre-merge-commit",
-        "prepare-commit-msg", "commit-msg", "post-commit", "pre-rebase", "post-checkout",
-        "post-merge", "pre-push", "pre-receive", "update", "proc-receive", "post-receive",
-        "post-update", "reference-transaction", "push-to-checkout", "pre-auto-gc",
-        "post-rewrite", "sendemail-validate", "post-index-change", "p4-changelist",
-        "p4-prepare-changelist", "p4-post-changelist", "p4-pre-submit",
+        "applypatch-msg",
+        "pre-applypatch",
+        "post-applypatch",
+        "pre-commit",
+        "pre-merge-commit",
+        "prepare-commit-msg",
+        "commit-msg",
+        "post-commit",
+        "pre-rebase",
+        "post-checkout",
+        "post-merge",
+        "pre-push",
+        "pre-receive",
+        "update",
+        "proc-receive",
+        "post-receive",
+        "post-update",
+        "reference-transaction",
+        "push-to-checkout",
+        "pre-auto-gc",
+        "post-rewrite",
+        "sendemail-validate",
+        "post-index-change",
+        "p4-changelist",
+        "p4-prepare-changelist",
+        "p4-post-changelist",
+        "p4-pre-submit",
     }
     installed = {p.name for p in (sandbox.guard / "hooks").iterdir()}
     assert documented <= installed
@@ -468,16 +500,26 @@ def test_doctor_scans_nested_repositories_and_worktrees(sandbox):
 
 def test_install_activate_global_sets_the_global_hooks_path(sandbox):
     """M17."""
-    subprocess.run(["git", "config", "--global", "--unset", "core.hooksPath"], env=sandbox.env,
-                   check=True)
+    subprocess.run(
+        ["git", "config", "--global", "--unset", "core.hooksPath"], env=sandbox.env, check=True
+    )
     hooks = sandbox.guard / "hooks"
     hooks.chmod(0o755)
     sandbox.install("--activate-global")
-    value = subprocess.run(["git", "config", "--global", "--get", "core.hooksPath"],
-                           env=sandbox.env, capture_output=True, text=True).stdout.strip()
+    value = subprocess.run(
+        ["git", "config", "--global", "--get", "core.hooksPath"],
+        env=sandbox.env,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     assert value == str(hooks)
-    local = subprocess.run(["git", "config", "--local", "--get", "core.hooksPath"],
-                           cwd=sandbox.work, env=sandbox.env, capture_output=True, text=True)
+    local = subprocess.run(
+        ["git", "config", "--local", "--get", "core.hooksPath"],
+        cwd=sandbox.work,
+        env=sandbox.env,
+        capture_output=True,
+        text=True,
+    )
     assert local.stdout.strip() == ""
 
 

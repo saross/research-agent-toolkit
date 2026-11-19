@@ -13,8 +13,11 @@ from pathlib import Path
 import pytest
 from conftest import assert_blocked, assert_passed
 
-REAL = Path(os.environ.get("PUBLISH_GUARD_TEST_GITLEAKS",
-                           Path.home() / ".config/publish-guard/bin/gitleaks"))
+REAL = Path(
+    os.environ.get(
+        "PUBLISH_GUARD_TEST_GITLEAKS", Path.home() / ".config/publish-guard/bin/gitleaks"
+    )
+)
 
 pytestmark = pytest.mark.skipif(not REAL.exists(), reason="the real gitleaks isn't installed")
 
@@ -85,8 +88,11 @@ def test_environment_config_does_not_excuse_a_real_token(real, tmp_path):
     sha = real.commit("a.txt", f'token = "{_token()}"\n')
     env = dict(real.env, GITLEAKS_CONFIG=str(planted))
     result = subprocess.run(
-        ["git", "push", "origin", "HEAD:refs/heads/main"], env=env, cwd=real.work,
-        capture_output=True, text=True,
+        ["git", "push", "origin", "HEAD:refs/heads/main"],
+        env=env,
+        cwd=real.work,
+        capture_output=True,
+        text=True,
     )
     assert_blocked(result, real, sha)
 

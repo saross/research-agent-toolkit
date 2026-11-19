@@ -161,16 +161,26 @@ PASS_THROUGH_HOOKS = (
 LOCKED_GIT_OPTIONS = (
     "--no-replace-objects",
     "--no-pager",
-    "-c", "core.quotePath=off",
-    "-c", "core.attributesFile=/dev/null",
-    "-c", "core.fsmonitor=false",
-    "-c", "core.hooksPath=/dev/null",
-    "-c", "color.ui=false",
-    "-c", "diff.noprefix=false",
-    "-c", "diff.mnemonicPrefix=false",
-    "-c", "diff.renames=false",
-    "-c", "diff.ignoreSubmodules=none",
-    "-c", "i18n.logOutputEncoding=UTF-8",
+    "-c",
+    "core.quotePath=off",
+    "-c",
+    "core.attributesFile=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "color.ui=false",
+    "-c",
+    "diff.noprefix=false",
+    "-c",
+    "diff.mnemonicPrefix=false",
+    "-c",
+    "diff.renames=false",
+    "-c",
+    "diff.ignoreSubmodules=none",
+    "-c",
+    "i18n.logOutputEncoding=UTF-8",
 )
 
 # Narrow on purpose. Aliases, usernames, and home paths are assumed discoverable, and blocking them
@@ -432,9 +442,7 @@ def required_tiers(home: Path, policy: Policy | None) -> tuple[str, ...]:
 class DenyList:
     """Matches word sequences against the stored hashes, across line breaks."""
 
-    def __init__(
-        self, salt: bytes, first: dict[str, set[int]], full: dict[str, set[str]]
-    ) -> None:
+    def __init__(self, salt: bytes, first: dict[str, set[int]], full: dict[str, set[str]]) -> None:
         self.salt = salt
         self.first = first
         self.full = full
@@ -446,9 +454,7 @@ class DenyList:
         self._first_cache: dict[str, str] = {}
 
     @classmethod
-    def load(
-        cls, home: Path, required: Iterable[str], only: set[str] | None = None
-    ) -> DenyList:
+    def load(cls, home: Path, required: Iterable[str], only: set[str] | None = None) -> DenyList:
         """Load every tier, or `only` those named, refusing anything missing, truncated, or from
         another key."""
         files = DenyFiles(home)
@@ -663,7 +669,10 @@ def github_visibility(name: str, gh: str | None) -> tuple[str, str]:
     env = {k: v for k, v in os.environ.items() if k not in ("GH_HOST", "GH_REPO", "GH_PAGER")}
     try:
         result = subprocess.run(
-            [gh, "api", f"repos/{name}"], capture_output=True, text=True, env=env,
+            [gh, "api", f"repos/{name}"],
+            capture_output=True,
+            text=True,
+            env=env,
             timeout=NETWORK_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.SubprocessError):
@@ -790,8 +799,11 @@ class Repository:
     def run(self, *args: str, stdin: bytes | None = None) -> bytes:
         """Run git and return its output. Any failure refuses the push."""
         result = subprocess.run(
-            [self.git, *LOCKED_GIT_OPTIONS, *args], input=stdin, capture_output=True,
-            env=self.env, cwd=self.git_dir,
+            [self.git, *LOCKED_GIT_OPTIONS, *args],
+            input=stdin,
+            capture_output=True,
+            env=self.env,
+            cwd=self.git_dir,
         )
         if result.returncode != 0:
             raise GuardError(f"git {args[0]} failed with status {result.returncode}")
@@ -799,8 +811,11 @@ class Repository:
 
     def _process(self, option: str) -> subprocess.Popen:
         return subprocess.Popen(
-            [self.git, *LOCKED_GIT_OPTIONS, "cat-file", option], stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, env=self.env, cwd=self.git_dir,
+            [self.git, *LOCKED_GIT_OPTIONS, "cat-file", option],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            env=self.env,
+            cwd=self.git_dir,
         )
 
     def info(self, sha: str) -> tuple[str, int] | None:
@@ -839,7 +854,13 @@ class Repository:
         """List what changed against one parent, or against nothing for a root commit."""
         range_args = [parent, commit] if parent else ["--root", commit]
         output = self.run(
-            "diff-tree", "-r", "-z", "--raw", "--no-abbrev", "--no-renames", "--no-commit-id",
+            "diff-tree",
+            "-r",
+            "-z",
+            "--raw",
+            "--no-abbrev",
+            "--no-renames",
+            "--no-commit-id",
             *range_args,
         )
         fields = output.split(b"\0")
@@ -850,14 +871,19 @@ class Repository:
             changes.append(Change(meta[0], meta[1], meta[2], meta[3], meta[4][0], path))
         return changes
 
-    def hunks(
-        self, old_sha: str, new_sha: str
-    ) -> tuple[list[list[tuple[int, str]]], set[int]]:
+    def hunks(self, old_sha: str, new_sha: str) -> tuple[list[list[tuple[int, str]]], set[int]]:
         """What a blob gains over another: blocks of added (line number, text), and the places
         where a deletion alone joined two lines (see `parse_hunks`)."""
         output = self.run(
-            "diff", "-U0", "--text", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames",
-            old_sha, new_sha,
+            "diff",
+            "-U0",
+            "--text",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            old_sha,
+            new_sha,
         )
         return parse_hunks(output)
 
@@ -1123,8 +1149,7 @@ class Scanner:
             owners.extend([number] * len(words))
         self.lines_tokenised += last_line - first_line + 1
         return [
-            (tuple(tokens[index : index + length]), tier, owners[index],
-             owners[index + length - 1])
+            (tuple(tokens[index : index + length]), tier, owners[index], owners[index + length - 1])
             for index, length, tier in self.deny.matches(tokens, self._context_skip)
         ]
 
@@ -1142,9 +1167,7 @@ class Scanner:
             self._hits[key] = cached
         return cached
 
-    def _windows(
-        self, lines: list[str], regions: list[Region]
-    ) -> list[tuple[int, int]]:
+    def _windows(self, lines: list[str], regions: list[Region]) -> list[tuple[int, int]]:
         """Line ranges that hold every match able to touch a change, merged.
 
         Each changed line, and each pair of lines a deletion joined, is widened by enough lines
@@ -1243,7 +1266,8 @@ class Scanner:
         place = Place("", "<ref name>", label=True)
         self.add_text(place, [(1, ref)])
         if (
-            namespace_rule and self._content_on
+            namespace_rule
+            and self._content_on
             and not ref.startswith(("refs/heads/", "refs/tags/"))
         ):
             self._record("ref-outside-heads-and-tags", place, None)
@@ -1414,8 +1438,9 @@ class Scanner:
         _, data = self.repo.read(change.new_sha)
         if data.startswith((b"\xff\xfe", b"\xfe\xff")):
             text = data.decode("utf-16", "replace")
-            self.add_text(place, [(n, t) for n, t in enumerate(text.splitlines(), 1)],
-                          secrets_only=True)
+            self.add_text(
+                place, [(n, t) for n, t in enumerate(text.splitlines(), 1)], secrets_only=True
+            )
         runs = [run.decode("ascii") for run in re.findall(rb"[\x20-\x7e]{8,}", data)]
         self.add_text(place, [(n, run) for n, run in enumerate(runs, 1)], secrets_only=True)
 
@@ -1444,11 +1469,18 @@ class Scanner:
             # Only the lines this change adds, so legacy content already published isn't
             # re-reported every time the file is edited.
             diff = self.repo.run(
-                "diff", "-U0", "--text", "--no-color", "--no-ext-diff", "--no-textconv",
-                change.old_sha, change.new_sha,
+                "diff",
+                "-U0",
+                "--text",
+                "--no-color",
+                "--no-ext-diff",
+                "--no-textconv",
+                change.old_sha,
+                change.new_sha,
             )
             data = b"\n".join(
-                line[1:] for line in diff.split(b"\n")
+                line[1:]
+                for line in diff.split(b"\n")
                 if line.startswith(b"+") and not line.startswith(b"+++")
             )
         for encoding in ("cp1252", "cp1251"):
@@ -1486,8 +1518,11 @@ class Scanner:
         place = Place(sha, path)
         # File names reach the secret scan on every remote.
         self.add_text(
-            Place(sha, "<file name>", label=True), [(1, path)], secrets_only=True,
-            hides_path=path, deny=False,
+            Place(sha, "<file name>", label=True),
+            [(1, path)],
+            secrets_only=True,
+            hides_path=path,
+            deny=False,
         )
         if path not in self._checked_paths:
             self._checked_paths.add(path)
@@ -1561,14 +1596,28 @@ class Scanner:
             try:
                 result = subprocess.run(
                     [
-                        gitleaks, "stdin", "--no-banner", "--log-level", "error",
-                        "--config", str(config),
+                        gitleaks,
+                        "stdin",
+                        "--no-banner",
+                        "--log-level",
+                        "error",
+                        "--config",
+                        str(config),
                         "--ignore-gitleaks-allow",
-                        "--gitleaks-ignore-path", str(ignore),
-                        "--report-format", "json", "--report-path", str(report),
-                        "--redact", "--exit-code", "7",
+                        "--gitleaks-ignore-path",
+                        str(ignore),
+                        "--report-format",
+                        "json",
+                        "--report-path",
+                        str(report),
+                        "--redact",
+                        "--exit-code",
+                        "7",
                     ],
-                    stdin=handle, capture_output=True, env=env, cwd=empty_folder,
+                    stdin=handle,
+                    capture_output=True,
+                    env=env,
+                    cwd=empty_folder,
                 )
             except OSError as error:
                 raise GuardError("gitleaks can't run") from error
@@ -1637,9 +1686,7 @@ def absolute_git_dir(git: str) -> Path:
 
 def common_git_dir(git: str) -> Path:
     """The folder shared by linked worktrees, where a repository's own hooks live."""
-    result = subprocess.run(
-        [git, "rev-parse", "--git-common-dir"], capture_output=True, text=True
-    )
+    result = subprocess.run([git, "rev-parse", "--git-common-dir"], capture_output=True, text=True)
     if result.returncode != 0:
         raise GuardError("this doesn't look like a git repository")
     return Path(result.stdout.strip()).resolve()
@@ -1673,10 +1720,18 @@ def parse_updates(data: bytes) -> list[Update]:
 def _outside_repository_env() -> dict[str, str]:
     """The user's environment, minus anything that would point git at a repository or override
     its configuration for one command."""
-    dropped = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
-               "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_NAMESPACE")
+    dropped = (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_NAMESPACE",
+    )
     return {
-        k: v for k, v in os.environ.items()
+        k: v
+        for k, v in os.environ.items()
         if k not in dropped and not k.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
     }
 
@@ -1696,8 +1751,12 @@ def remote_commits(git: str, url: str, repo: Repository, outside: Path) -> list[
     env = _outside_repository_env()
     try:
         resolved = subprocess.run(
-            [git, "ls-remote", "--get-url", "--", url], capture_output=True, text=True,
-            env=env, cwd=outside, timeout=NETWORK_TIMEOUT_SECONDS,
+            [git, "ls-remote", "--get-url", "--", url],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=outside,
+            timeout=NETWORK_TIMEOUT_SECONDS,
         )
         if resolved.returncode != 0 or resolved.stdout.strip() != url:
             raise GuardError(
@@ -1706,8 +1765,12 @@ def remote_commits(git: str, url: str, repo: Repository, outside: Path) -> list[
             )
         # This call needs the user's credentials and transport settings, so it isn't locked.
         result = subprocess.run(
-            [git, "ls-remote", "--", url], capture_output=True, text=True, env=env,
-            cwd=outside, timeout=NETWORK_TIMEOUT_SECONDS,
+            [git, "ls-remote", "--", url],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=outside,
+            timeout=NETWORK_TIMEOUT_SECONDS,
         )
     except subprocess.SubprocessError as error:
         raise GuardError("asking the remote what it has timed out") from error
@@ -1905,8 +1968,15 @@ def run_hook(home: Path, remote: str, url: str) -> int:
     try:
         rules = decide_rules(destination, home)
     except (Blocked, GuardError) as error:
-        write_log(home, {**record, "decision": "blocked", "reason": type(error).__name__,
-                         "alert": getattr(error, "alert", False)})
+        write_log(
+            home,
+            {
+                **record,
+                "decision": "blocked",
+                "reason": type(error).__name__,
+                "alert": getattr(error, "alert", False),
+            },
+        )
         raise
     gitleaks = verified_gitleaks(install)
     deny = None
@@ -1960,10 +2030,13 @@ def run_hook(home: Path, remote: str, url: str) -> int:
     warnings = [f for f in scanner.findings if f.severity == "warn"]
     push_id = push_fingerprint(pushes, blocking)
     record.update(
-        commits=len(commits), counts=summarise(scanner.findings),
+        commits=len(commits),
+        counts=summarise(scanner.findings),
         binary_allowed=sorted(
-            {p if full and p not in scanner.hidden_paths else "<path hidden>"
-             for p in scanner.binary_allowed}
+            {
+                p if full and p not in scanner.hidden_paths else "<path hidden>"
+                for p in scanner.binary_allowed
+            }
         ),
     )
     if blocking:
@@ -1999,7 +2072,7 @@ def render_pre_push_stub(install: dict, home: Path) -> str:
     return (
         "#!/bin/sh\n# Generated by publish_guard.py install. `doctor` checks this file.\n"
         f"if [ ! -x {shlex.quote(install['python'])} ] || [ ! -r {shlex.quote(engine)} ]; then\n"
-        f'  echo "{MARKER}: the guard can\'t run (its engine or Python is missing), so '
+        f"  echo \"{MARKER}: the guard can't run (its engine or Python is missing), so "
         'refusing." >&2\n'
         "  exit 1\n"
         "fi\n"
@@ -2011,7 +2084,7 @@ def render_pass_through_stub(name: str) -> str:
     """A stub that only restores the repository's own hook of the same name."""
     return (
         "#!/bin/sh\n# Generated by publish_guard.py install. `doctor` checks this file.\n"
-        'dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0\n'
+        "dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0\n"
         f'hook="$dir/hooks/{name}"\n'
         'if [ -x "$hook" ]; then exec "$hook" "$@"; fi\n'
         "exit 0\n"
@@ -2037,8 +2110,9 @@ def command_install(home: Path, args: argparse.Namespace) -> int:
     os.chmod(home, 0o700)
     install = {
         "git": _require_tool("git"),
-        "python": _require_tool("python3", "/usr/bin/python3" if Path("/usr/bin/python3").exists()
-                                else sys.executable),
+        "python": _require_tool(
+            "python3", "/usr/bin/python3" if Path("/usr/bin/python3").exists() else sys.executable
+        ),
         "gh": shutil.which("gh"),
         "gitleaks": args.gitleaks or str(home / "bin" / "gitleaks"),
         "gitleaks_sha256": args.gitleaks_sha256,
@@ -2219,14 +2293,18 @@ def command_override(home: Path, args: argparse.Namespace) -> int:
         print("publish-guard: an override needs a reason.", file=sys.stderr)
         return 1
     if not re.fullmatch(r"[0-9a-f]{32}", args.push):
-        print("publish-guard: --push takes the identifier the blocked push printed.",
-              file=sys.stderr)
+        print(
+            "publish-guard: --push takes the identifier the blocked push printed.", file=sys.stderr
+        )
         return 1
     path = override_path(home, args.repo, args.push)
     path.parent.mkdir(parents=True, exist_ok=True)
     details = {
-        "repo": args.repo, "push": args.push, "reason": reason,
-        "created": time.time(), "generation": policy_generation(home),
+        "repo": args.repo,
+        "push": args.push,
+        "reason": reason,
+        "created": time.time(),
+        "generation": policy_generation(home),
     }
     path.write_text(json.dumps(details))
     write_log(home, {"repo": args.repo.lower(), "decision": "override-created", "reason": reason})
@@ -2306,8 +2384,10 @@ def command_audit(home: Path, args: argparse.Namespace) -> int:
     git = install["git"]
     git_dir = Path(
         subprocess.run(
-            [git, "-C", args.repo, "rev-parse", "--absolute-git-dir"], capture_output=True,
-            text=True, check=True,
+            [git, "-C", args.repo, "rev-parse", "--absolute-git-dir"],
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
     )
     repo = Repository(git, git_dir)
@@ -2355,7 +2435,8 @@ def _effective_hooks_path(git: str, folder: Path) -> str | None:
     switches hooks off for some folders is seen too (audit finding L6).
     """
     result = subprocess.run(
-        [git, "-C", str(folder), "config", "--get", "core.hooksPath"], capture_output=True,
+        [git, "-C", str(folder), "config", "--get", "core.hooksPath"],
+        capture_output=True,
         text=True,
     )
     return result.stdout.strip() or None
@@ -2442,7 +2523,10 @@ def _gh_json(gh: str, *args: str) -> object:
     env = {k: v for k, v in os.environ.items() if k not in ("GH_HOST", "GH_REPO", "GH_PAGER")}
     try:
         result = subprocess.run(
-            [gh, *args], capture_output=True, text=True, env=env,
+            [gh, *args],
+            capture_output=True,
+            text=True,
+            env=env,
             timeout=NETWORK_TIMEOUT_SECONDS * 3,
         )
     except (OSError, subprocess.SubprocessError) as error:
@@ -2457,8 +2541,16 @@ def _gh_json(gh: str, *args: str) -> object:
 
 def owner_listing(gh: str, owner: str) -> dict[str, tuple[str, bool]]:
     """Every repository an owner has that this account can see: (visibility, archived)."""
-    rows = _gh_json(gh, "repo", "list", owner, "--limit", "5000", "--json",
-                    "nameWithOwner,visibility,isArchived")
+    rows = _gh_json(
+        gh,
+        "repo",
+        "list",
+        owner,
+        "--limit",
+        "5000",
+        "--json",
+        "nameWithOwner,visibility,isArchived",
+    )
     if not isinstance(rows, list):
         raise GuardError("gh repo list gave an unexpected answer")
     return {
@@ -2478,8 +2570,11 @@ def remote_refs(git: str, url: str, outside: Path) -> dict[str, str]:
     """A remote's refs, asked of the remote, without peeled tag lines."""
     try:
         result = subprocess.run(
-            [git, "ls-remote", "--", url], capture_output=True, text=True,
-            env={**_outside_repository_env(), "GIT_TERMINAL_PROMPT": "0"}, cwd=outside,
+            [git, "ls-remote", "--", url],
+            capture_output=True,
+            text=True,
+            env={**_outside_repository_env(), "GIT_TERMINAL_PROMPT": "0"},
+            cwd=outside,
             timeout=NETWORK_TIMEOUT_SECONDS,
         )
     except subprocess.SubprocessError as error:
@@ -2502,14 +2597,24 @@ def refresh_mirror(git: str, url: str, mirror: Path, outside: Path) -> None:
     env = {**_outside_repository_env(), "GIT_TERMINAL_PROMPT": "0"}
     base = [git, "-c", "core.hooksPath=/dev/null"]
     if (mirror / "HEAD").is_file():
-        command = [*base, "-C", str(mirror), "fetch", "--quiet", "--prune", "--", url,
-                   "+refs/*:refs/*"]
+        command = [
+            *base,
+            "-C",
+            str(mirror),
+            "fetch",
+            "--quiet",
+            "--prune",
+            "--",
+            url,
+            "+refs/*:refs/*",
+        ]
     else:
         mirror.parent.mkdir(parents=True, exist_ok=True)
         command = [*base, "clone", "--quiet", "--mirror", "--", url, str(mirror)]
     try:
-        result = subprocess.run(command, capture_output=True, env=env, cwd=outside,
-                                timeout=NETWORK_TIMEOUT_SECONDS * 20)
+        result = subprocess.run(
+            command, capture_output=True, env=env, cwd=outside, timeout=NETWORK_TIMEOUT_SECONDS * 20
+        )
     except subprocess.SubprocessError as error:
         raise GuardError("fetching the repository timed out") from error
     if result.returncode != 0:
@@ -2544,18 +2649,39 @@ def fetch_objects(git: str, url: str, mirror: Path, outside: Path, shas: list[st
     """
     env = {**_outside_repository_env(), "GIT_TERMINAL_PROMPT": "0"}
     for sha in shas[:MAX_LISTED_FINDINGS]:
-        command = [git, "-c", "core.hooksPath=/dev/null", "-C", str(mirror), "fetch", "--quiet",
-                   "--no-write-fetch-head", "--", url, sha]
+        command = [
+            git,
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+            str(mirror),
+            "fetch",
+            "--quiet",
+            "--no-write-fetch-head",
+            "--",
+            url,
+            sha,
+        ]
         try:
-            subprocess.run(command, capture_output=True, env=env, cwd=outside,
-                           timeout=NETWORK_TIMEOUT_SECONDS)
+            subprocess.run(
+                command, capture_output=True, env=env, cwd=outside, timeout=NETWORK_TIMEOUT_SECONDS
+            )
         except subprocess.SubprocessError:
             continue
 
 
 def scan_new_content(
-    home: Path, install: dict, name: str, entry: RepoPolicy, policy: Policy, deny: DenyList,
-    gitleaks: str, record: dict, wanted: list[tuple[str, str]], full: bool, scratch: Path,
+    home: Path,
+    install: dict,
+    name: str,
+    entry: RepoPolicy,
+    policy: Policy,
+    deny: DenyList,
+    gitleaks: str,
+    record: dict,
+    wanted: list[tuple[str, str]],
+    full: bool,
+    scratch: Path,
 ) -> tuple[list[dict], dict[str, str], list[tuple[str, str]]]:
     """Read what a public repository gained since its checkpoint.
 
@@ -2600,19 +2726,27 @@ def scan_new_content(
             tip = scanner.scan_tag_chain(sha)
             if tip:
                 tips.append(tip)
-        floor = set(unread_below.values()) if full else {*checkpoint.values(),
-                                                         *unread_below.values()}
+        floor = (
+            set(unread_below.values()) if full else {*checkpoint.values(), *unread_below.values()}
+        )
         known = [sha for sha in floor if repo.info(sha)]
         for sha in commits_to_scan(repo, tips, known):
             scanner.scan_commit(sha)
         scanner.run_gitleaks(gitleaks, write_scanner_config(scratch), scratch, stream)
     finally:
         repo.close()
-    records = [finding_record(name, f, scanner.hidden_paths)
-               for f in scanner.findings[:MAX_LISTED_FINDINGS]]
+    records = [
+        finding_record(name, f, scanner.hidden_paths)
+        for f in scanner.findings[:MAX_LISTED_FINDINGS]
+    ]
     if len(scanner.findings) > MAX_LISTED_FINDINGS:
-        records.append({"repo": name.lower(), "rule": "more",
-                        "count": len(scanner.findings) - MAX_LISTED_FINDINGS})
+        records.append(
+            {
+                "repo": name.lower(),
+                "rule": "more",
+                "count": len(scanner.findings) - MAX_LISTED_FINDINGS,
+            }
+        )
     return records, covered, still
 
 
@@ -2623,8 +2757,12 @@ def finding_record(name: str, finding: Finding, hidden: set[str]) -> dict:
     path listed later is withheld from every later report (Astra review H3).
     """
     return {
-        "repo": name.lower(), "rule": finding.rule, "commit": finding.place.commit,
-        "path": finding.place.path, "label": finding.place.label, "line": finding.line,
+        "repo": name.lower(),
+        "rule": finding.rule,
+        "commit": finding.place.commit,
+        "path": finding.place.path,
+        "label": finding.place.label,
+        "line": finding.line,
         "hidden": finding.place.path in hidden,
     }
 
@@ -2652,9 +2790,7 @@ def render_finding(record: dict, deny: DenyList | None) -> str:
     if record["rule"] == "more":
         return f"{repo}: and {record['count']} more"
     path = record["path"]
-    if not record["label"] and (
-        record.get("hidden") or deny is None or _names_listed(path, deny)
-    ):
+    if not record["label"] and (record.get("hidden") or deny is None or _names_listed(path, deny)):
         path = "<path hidden>"
     commit = f"commit {record['commit'][:12]}  " if record["commit"] else ""
     line = f":{record['line']}" if record["line"] else ""
@@ -2683,8 +2819,13 @@ def open_secret_alerts(gh: str, name: str) -> int | None:
     Only the count is read; the alerts' secret values never leave the GitHub CLI.
     """
     try:
-        count = _gh_json(gh, "api", f"repos/{name}/secret-scanning/alerts?state=open&per_page=100",
-                         "--jq", "length")
+        count = _gh_json(
+            gh,
+            "api",
+            f"repos/{name}/secret-scanning/alerts?state=open&per_page=100",
+            "--jq",
+            "length",
+        )
     except GuardError:
         return None
     return count if isinstance(count, int) else None
@@ -2724,9 +2865,7 @@ def watch_display_name(name: str, deny: DenyList | None) -> str:
     return withheld_name(name)
 
 
-def scan_generation(
-    install: dict, entry: RepoPolicy, tiers: Iterable[str], deny: DenyList
-) -> str:
+def scan_generation(install: dict, entry: RepoPolicy, tiers: Iterable[str], deny: DenyList) -> str:
     """A fingerprint of everything that decides what a scan of one repository finds.
 
     It covers the repository's policy entry, the required tiers, the deny-lists, and the secret
@@ -2779,11 +2918,16 @@ def load_watch_state(path: Path) -> dict:
         # Objects an earlier form of this version couldn't fetch are pending pairs now.
         missing = record.pop("missing", None)
         if missing:
-            record["pending"] = sorted({*map(tuple, record.get("pending", [])),
-                                        *((ref, sha) for sha, ref in missing.items())})
+            record["pending"] = sorted(
+                {
+                    *map(tuple, record.get("pending", [])),
+                    *((ref, sha) for sha, ref in missing.items()),
+                }
+            )
     # Findings stored as text by earlier code are kept, and shown only when safe.
-    state["findings"] = [f if isinstance(f, dict) else {"legacy": str(f)}
-                         for f in state["findings"]]
+    state["findings"] = [
+        f if isinstance(f, dict) else {"legacy": str(f)} for f in state["findings"]
+    ]
     return state
 
 
@@ -2809,18 +2953,25 @@ def _check_watch_state(state: dict) -> None:
     """Refuse a state file whose parts aren't the shapes the watcher reads (Astra review R1)."""
     repos, findings = state["repos"], state["findings"]
     acknowledged, listed = state["acknowledged"], state["listed"]
-    if not (isinstance(repos, dict) and all(isinstance(r, dict) for r in repos.values())
-            and isinstance(findings, list) and all(valid_finding(f) for f in findings)
-            and isinstance(acknowledged, list) and isinstance(listed, dict)
-            and isinstance(state.get("attempted", {}), dict)):
+    if not (
+        isinstance(repos, dict)
+        and all(isinstance(r, dict) for r in repos.values())
+        and isinstance(findings, list)
+        and all(valid_finding(f) for f in findings)
+        and isinstance(acknowledged, list)
+        and isinstance(listed, dict)
+        and isinstance(state.get("attempted", {}), dict)
+    ):
         raise GuardError("the watcher's state file isn't in the expected form")
     for record in repos.values():
         for key in ("refs", "unread_below"):
             if not isinstance(record.get(key, {}), dict):
                 raise GuardError("the watcher's state file isn't in the expected form")
         pending = record.get("pending", [])
-        if not (isinstance(pending, list)
-                and all(isinstance(p, list | tuple) and len(p) == 2 for p in pending)):
+        if not (
+            isinstance(pending, list)
+            and all(isinstance(p, list | tuple) and len(p) == 2 for p in pending)
+        ):
             raise GuardError("the watcher's state file isn't in the expected form")
 
 
@@ -2894,17 +3045,23 @@ def command_watch(home: Path, args: argparse.Namespace) -> int:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            print("publish-guard: another watch is running, so this one checked nothing",
-                  file=sys.stderr)
+            print(
+                "publish-guard: another watch is running, so this one checked nothing",
+                file=sys.stderr,
+            )
             return EXIT_WATCH_INCOMPLETE
         if args.clear:
             return watch_clear(home, args.clear)
         # Until this run finishes, the report says so; a run stopped from outside, which can't
         # clean up, leaves it saying so (Astra review H4). This first marker needs no list or
         # saved state, so damaged ones can't keep it from being written (Astra review R1).
-        started = WatchRun(incomplete=[f"a run started on {time.strftime('%Y-%m-%d')} hasn't "
-                                       "finished; if this stays, it was stopped (a time limit, "
-                                       "a shutdown, or a fault) before it could report"])
+        started = WatchRun(
+            incomplete=[
+                f"a run started on {time.strftime('%Y-%m-%d')} hasn't "
+                "finished; if this stays, it was stopped (a time limit, "
+                "a shutdown, or a fault) before it could report"
+            ]
+        )
         if report is not None:
             write_watch_report(report, render_watch_report(started))
         try:
@@ -2936,12 +3093,16 @@ def watch_clear(home: Path, which: str) -> int:
     else:
         names = {which.lower()} & set(state["repos"])
         prefixes = (which.lower() + ":", withheld_name(which) + ":")
-        cleared = [f for f in state["findings"]
-                   if f.get("repo") == which.lower() or f.get("legacy", "").startswith(prefixes)]
+        cleared = [
+            f
+            for f in state["findings"]
+            if f.get("repo") == which.lower() or f.get("legacy", "").startswith(prefixes)
+        ]
     state["findings"] = [f for f in state["findings"] if f not in cleared]
     state["acknowledged"] = sorted(set(state["acknowledged"]) | {finding_key(f) for f in cleared})
-    objects = sum(len({sha for _, sha in state["repos"][name].pop("pending", [])})
-                  for name in names)
+    objects = sum(
+        len({sha for _, sha in state["repos"][name].pop("pending", [])}) for name in names
+    )
     save_watch_state(state_path, state)
     extra = f" and {objects} object(s) that couldn't be fetched" if objects else ""
     print(f"cleared {len(cleared)} finding(s){extra}")
@@ -2985,16 +3146,27 @@ def _watch_last_resort() -> None:
     """Say, in fixed words, that a run failed without a report. Needs nothing that can break:
     no report, log, list, or state (Astra review R3)."""
     try:
-        print("publish-guard: the watcher failed and couldn't write its report; treat this "
-              "run as incomplete", file=sys.stderr)
+        print(
+            "publish-guard: the watcher failed and couldn't write its report; treat this "
+            "run as incomplete",
+            file=sys.stderr,
+        )
     except Exception:  # noqa: BLE001 - nothing more can be done; the exit status remains
         pass
 
 
 def finish_watch(home: Path, report: Path | None, run: WatchRun) -> None:
     """Log, print, and write the report."""
-    write_log(home, {"watch": True, "status": run.status, "incomplete": len(run.incomplete),
-                     "attention": len(run.attention), "notes": len(run.notes)})
+    write_log(
+        home,
+        {
+            "watch": True,
+            "status": run.status,
+            "incomplete": len(run.incomplete),
+            "attention": len(run.attention),
+            "notes": len(run.notes),
+        },
+    )
     body = render_watch_report(run)
     print(body)
     if report is not None:
@@ -3039,16 +3211,19 @@ def _watch(home: Path, args: argparse.Namespace, report: Path | None) -> int:
             state["listed"][owner] = today
         except GuardError as error:
             unlisted.add(owner)
-            run.incomplete.append(f"couldn't list {show(owner)}'s repositories "
-                                  f"({safe_text(str(error), deny)}); last listed "
-                                  f"{state['listed'].get(owner, 'never')}")
+            run.incomplete.append(
+                f"couldn't list {show(owner)}'s repositories "
+                f"({safe_text(str(error), deny)}); last listed "
+                f"{state['listed'].get(owner, 'never')}"
+            )
     visible = {name: visibility for name, (visibility, _) in listed.items()}
     for name, entry in sorted(policy.repos.items()):
         visibility = visible.get(name)
         if visibility is None:
             if name.split("/", 1)[0] not in unlisted:
-                run.notes.append(f"{show(name)} is in the policy but not on GitHub "
-                                 "(renamed or deleted?)")
+                run.notes.append(
+                    f"{show(name)} is in the policy but not on GitHub (renamed or deleted?)"
+                )
         elif visibility == "public" and entry.label == "never-public":
             run.attention.append(f"ALERT {show(name)} is labelled never-public but is public")
         elif visibility == "public" and entry.label == "may-go-public":
@@ -3064,8 +3239,10 @@ def _watch(home: Path, args: argparse.Namespace, report: Path | None) -> int:
     if archived_unlisted:
         # Archived repositories can't change until unarchived, so they wait for the one-time
         # audit of what is already public rather than needing attention now.
-        run.notes.append(f"{len(archived_unlisted)} archived public repository(ies) have no "
-                         "policy entry: " + ", ".join(archived_unlisted))
+        run.notes.append(
+            f"{len(archived_unlisted)} archived public repository(ies) have no "
+            "policy entry: " + ", ".join(archived_unlisted)
+        )
 
     baselined = 0
     watched: list[str] = []
@@ -3078,8 +3255,7 @@ def _watch(home: Path, args: argparse.Namespace, report: Path | None) -> int:
         # cut short, or failing on the same repositories, doesn't keep starving the rest
         # (Astra review R2). Last success is kept apart, as `checked`, for the report.
         attempted: dict = state.setdefault("attempted", {})
-        order = sorted(policy.repos.items(),
-                       key=lambda item: (attempted.get(item[0], 0), item[0]))
+        order = sorted(policy.repos.items(), key=lambda item: (attempted.get(item[0], 0), item[0]))
         for name, entry in order:
             if visible.get(name) != "public" or not is_watched(name, entry, policy):
                 continue
@@ -3091,8 +3267,11 @@ def _watch(home: Path, args: argparse.Namespace, report: Path | None) -> int:
             if alerts is None:
                 run.incomplete.append(f"{shown}: GitHub's secret-scanning alerts couldn't be read")
             elif alerts:
-                link = f" (https://github.com/{name}/security/secret-scanning)" if (
-                    shown == name) else ""
+                link = (
+                    f" (https://github.com/{name}/security/secret-scanning)"
+                    if (shown == name)
+                    else ""
+                )
                 run.attention.append(f"{shown}: {alerts} open secret-scanning alert(s){link}")
             record = repos_state.get(name)
             generation = scan_generation(install, entry, tiers, deny)
@@ -3101,16 +3280,21 @@ def _watch(home: Path, args: argparse.Namespace, report: Path | None) -> int:
                 with time_limit(limit):
                     observed = remote_refs(install["git"], watch_url(name, install), outside)
                     if record is None and not args.full and name not in rescan:
-                        repos_state[name] = {"refs": observed, "unread_below": observed,
-                                             "generation": generation, "checked": today}
+                        repos_state[name] = {
+                            "refs": observed,
+                            "unread_below": observed,
+                            "generation": generation,
+                            "checked": today,
+                        }
                         baselined += 1
                         save_watch_state(state_path, state)
                         continue
                     record = dict(record or {"refs": {}, "unread_below": {}})
                     pending = {tuple(pair) for pair in record.get("pending", [])}
                     checkpoint = record.get("refs", {})
-                    seen = {(ref, sha) for ref, sha in observed.items()
-                            if checkpoint.get(ref) != sha}
+                    seen = {
+                        (ref, sha) for ref, sha in observed.items() if checkpoint.get(ref) != sha
+                    }
                     full = name in rescan or record.get("generation") != generation
                     if not seen and not full and not pending:
                         record["checked"] = today
@@ -3124,12 +3308,23 @@ def _watch(home: Path, args: argparse.Namespace, report: Path | None) -> int:
                     if name in rescan:
                         record["unread_below"] = {}
                     found, covered, still = scan_new_content(
-                        home, install, name, entry, policy, deny, gitleaks, record, wanted,
-                        full, scratch,
+                        home,
+                        install,
+                        name,
+                        entry,
+                        policy,
+                        deny,
+                        gitleaks,
+                        record,
+                        wanted,
+                        full,
+                        scratch,
                     )
             except GuardError as error:
-                run.incomplete.append(f"couldn't read {shown} ({safe_text(str(error), deny)}); "
-                                      f"last complete check {last}")
+                run.incomplete.append(
+                    f"couldn't read {shown} ({safe_text(str(error), deny)}); "
+                    f"last complete check {last}"
+                )
                 continue
             for item in found:
                 if finding_key(item) not in known_findings:
@@ -3163,11 +3358,14 @@ def _watch(home: Path, args: argparse.Namespace, report: Path | None) -> int:
             "`watch --rescan NAME` reads it"
         )
     if routes:
-        run.notes.append("agent publishing routes since the last run: " + ", ".join(
-            f"{route} {count}" for route, count in sorted(routes.items())))
+        run.notes.append(
+            "agent publishing routes since the last run: "
+            + ", ".join(f"{route} {count}" for route, count in sorted(routes.items()))
+        )
     if state["acknowledged"]:
-        run.notes.append(f"{len(state['acknowledged'])} finding(s) acknowledged with `--clear` "
-                         "aren't listed")
+        run.notes.append(
+            f"{len(state['acknowledged'])} finding(s) acknowledged with `--clear` aren't listed"
+        )
     run.attention += [f"finding: {render_finding(f, deny)}" for f in findings]
     finish_watch(home, report, run)
     return run.status
@@ -3183,9 +3381,15 @@ def render_watch_report(run: WatchRun) -> str:
         1: "something needs attention.",
         EXIT_WATCH_INCOMPLETE: "INCOMPLETE: some checks couldn't run (see below).",
     }[run.status]
-    lines = ["# Publication watch", "",
-             f"Checked on {time.strftime('%Y-%m-%d')} by the publish guard's watcher. Locations "
-             "and counts only, never values.", "", f"Status: {status}", ""]
+    lines = [
+        "# Publication watch",
+        "",
+        f"Checked on {time.strftime('%Y-%m-%d')} by the publish guard's watcher. Locations "
+        "and counts only, never values.",
+        "",
+        f"Status: {status}",
+        "",
+    ]
     if run.incomplete:
         lines += ["## Couldn't check", ""] + [f"- {item}" for item in run.incomplete] + [""]
     lines += ["## Needs attention", ""]
@@ -3226,12 +3430,17 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--gitleaks", help="path to the gitleaks binary")
     install.add_argument("--gitleaks-sha256", help="checksum `doctor` verifies gitleaks against")
     install.add_argument("--visibility-map", help="for tests only: stand-in for asking GitHub")
-    install.add_argument("--no-hand-over", action="store_true",
-                         help="never run a repository's own pre-push hook")
-    install.add_argument("--activate-global", action="store_true",
-                         help="also set the global core.hooksPath")
-    install.add_argument("--test-mode", action="store_true",
-                         help="for tests only: allow a visibility map and skip terminal checks")
+    install.add_argument(
+        "--no-hand-over", action="store_true", help="never run a repository's own pre-push hook"
+    )
+    install.add_argument(
+        "--activate-global", action="store_true", help="also set the global core.hooksPath"
+    )
+    install.add_argument(
+        "--test-mode",
+        action="store_true",
+        help="for tests only: allow a visibility map and skip terminal checks",
+    )
     install.add_argument("--scan-timeout", type=int, help="for tests only: the scan's time limit")
     install.set_defaults(handler=command_install)
 
@@ -3257,8 +3466,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     override = commands.add_parser("override", help="exempt one exact push, at a terminal")
     override.add_argument("--repo", required=True)
-    override.add_argument("--push", required=True,
-                          help="the identifier of the blocked push, as it printed it")
+    override.add_argument(
+        "--push", required=True, help="the identifier of the blocked push, as it printed it"
+    )
     override.set_defaults(handler=command_override)
 
     audit = commands.add_parser("audit", help="apply the rules to existing history")
@@ -3271,12 +3481,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     watch = commands.add_parser("watch", help="check what has already reached GitHub")
     watch.add_argument("--report", help="also write the report to this Markdown file")
-    watch.add_argument("--full", action="store_true",
-                       help="read the whole history of repositories seen for the first time")
-    watch.add_argument("--rescan", action="append", metavar="NAME",
-                       help="read this repository's whole history again (repeatable)")
-    watch.add_argument("--clear", help="acknowledge recorded findings for one repository, or "
-                       "'all', at a terminal")
+    watch.add_argument(
+        "--full",
+        action="store_true",
+        help="read the whole history of repositories seen for the first time",
+    )
+    watch.add_argument(
+        "--rescan",
+        action="append",
+        metavar="NAME",
+        help="read this repository's whole history again (repeatable)",
+    )
+    watch.add_argument(
+        "--clear", help="acknowledge recorded findings for one repository, or 'all', at a terminal"
+    )
     watch.set_defaults(handler=command_watch)
 
     doctor = commands.add_parser("doctor", help="check the guard is in force on this machine")

@@ -26,8 +26,11 @@ from conftest import (
     blocked_push_id,
 )
 
-REAL = Path(os.environ.get("PUBLISH_GUARD_TEST_GITLEAKS",
-                           Path.home() / ".config/publish-guard/bin/gitleaks"))
+REAL = Path(
+    os.environ.get(
+        "PUBLISH_GUARD_TEST_GITLEAKS", Path.home() / ".config/publish-guard/bin/gitleaks"
+    )
+)
 needs_real = pytest.mark.skipif(not REAL.exists(), reason="the real gitleaks isn't installed")
 
 
@@ -54,9 +57,7 @@ def _never_public(sandbox):
 
 @needs_real
 @pytest.mark.parametrize("magic,offset", [("ustar", 257), ("DICM", 128)])
-def test_c1_file_signature_in_a_commit_message_does_not_switch_the_scanner_off(
-    real, magic, offset
-):
+def test_c1_file_signature_in_a_commit_message_does_not_switch_the_scanner_off(real, magic, offset):
     """Places a file-type signature at the byte offset gitleaks checks, counting the text that
     comes before the commit message in the scanned stream (the ref name and two identities)."""
     _never_public(real)
@@ -75,8 +76,9 @@ def test_c1_file_signature_in_a_commit_message_does_not_switch_the_scanner_off(
 def test_c1_audit_still_finds_secrets_when_the_author_starts_like_a_binary(real):
     env = dict(real.env, GIT_AUTHOR_NAME="MZ Person")
     real.commit("a.txt", f'token = "{_token()}"\n', "add config", env=env)
-    result = real.engine("audit", "--repo", str(real.work), "--name", "x/y", "--as", "private",
-                         "--rev", "HEAD")
+    result = real.engine(
+        "audit", "--repo", str(real.work), "--name", "x/y", "--as", "private", "--rev", "HEAD"
+    )
     assert "secret:github-pat" in result.stdout, result.stdout
 
 
@@ -112,9 +114,14 @@ def test_c2_url_rewrite_passed_on_the_command_line_is_ignored(sandbox):
     sha = sandbox.commit("diary.txt", f"{PERSON}\n")
     assert sandbox.push(str(sandbox.private), "HEAD:refs/heads/main").returncode == 0
     result = sandbox.git(
-        "-c", f"url.{sandbox.public}.pushInsteadOf=placeholder:origin",
-        "-c", f"url.{sandbox.private}.insteadOf={sandbox.public}",
-        "push", "placeholder:origin", "HEAD:refs/heads/main", check=False,
+        "-c",
+        f"url.{sandbox.public}.pushInsteadOf=placeholder:origin",
+        "-c",
+        f"url.{sandbox.private}.insteadOf={sandbox.public}",
+        "push",
+        "placeholder:origin",
+        "HEAD:refs/heads/main",
+        check=False,
     )
     assert result.returncode != 0
     assert "publish-guard: BLOCKED" in result.stderr
@@ -175,8 +182,11 @@ def test_m3_log_does_not_hold_a_listed_path(sandbox):
 
 
 @needs_real
-@pytest.mark.parametrize("prefix", ["version https://git-lfs.github.com/spec/v1\n", "\x00\n"],
-                         ids=["lfs-header", "nul-byte"])
+@pytest.mark.parametrize(
+    "prefix",
+    ["version https://git-lfs.github.com/spec/v1\n", "\x00\n"],
+    ids=["lfs-header", "nul-byte"],
+)
 def test_m4_text_that_looks_binary_still_reaches_the_secret_scan(real, prefix):
     _never_public(real)
     sha = real.commit("notes.txt", prefix + f'token = "{_token()}"\n')
@@ -266,8 +276,13 @@ def test_l2_listed_term_in_a_tag_name_header_blocks(sandbox):
         "tagger Test Person <test@example.invalid> 0 +0000\n\nrelease\n"
     )
     tag = subprocess.run(
-        ["git", "mktag"], input=raw, text=True, capture_output=True, cwd=sandbox.work,
-        env=sandbox.env, check=True,
+        ["git", "mktag"],
+        input=raw,
+        text=True,
+        capture_output=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     ).stdout.strip()
     assert_blocked(sandbox.push("origin", f"{tag}:refs/tags/v1"), sandbox)
 
@@ -282,8 +297,13 @@ def test_l2_listed_term_in_an_extra_commit_header_blocks(sandbox):
         f"x-note {PERSON}\n\nan ordinary message\n"
     )
     sha = subprocess.run(
-        ["git", "hash-object", "-t", "commit", "-w", "--stdin"], input=raw, text=True,
-        capture_output=True, cwd=sandbox.work, env=sandbox.env, check=True,
+        ["git", "hash-object", "-t", "commit", "-w", "--stdin"],
+        input=raw,
+        text=True,
+        capture_output=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     ).stdout.strip()
     assert_blocked(sandbox.push("origin", f"{sha}:refs/heads/main"), sandbox, sha)
 
@@ -310,8 +330,13 @@ def test_l2_signatures_are_not_scanned_as_text(sandbox):
         " -----END PGP SIGNATURE-----\n\nsigned message\n"
     )
     sha = subprocess.run(
-        ["git", "hash-object", "-t", "commit", "-w", "--stdin"], input=raw, text=True,
-        capture_output=True, cwd=sandbox.work, env=sandbox.env, check=True,
+        ["git", "hash-object", "-t", "commit", "-w", "--stdin"],
+        input=raw,
+        text=True,
+        capture_output=True,
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
     ).stdout.strip()
     assert_passed(sandbox.push("origin", f"{sha}:refs/heads/main"), sandbox, sha)
 
@@ -340,8 +365,12 @@ def test_l3_editing_a_legacy_file_reports_only_added_names(sandbox):
     path.write_bytes("101,Желязко Петров\n".encode("cp1251"))
     sandbox.git("add", "finds.csv")
     sandbox.git("commit", "-q", "-m", "legacy")
-    subprocess.run(["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
-                   cwd=sandbox.work, env=sandbox.env, check=True)
+    subprocess.run(
+        ["git", "push", "-q", "--no-verify", "origin", "HEAD:refs/heads/main"],
+        cwd=sandbox.work,
+        env=sandbox.env,
+        check=True,
+    )
     path.write_bytes("101,Желязко Петров\n102,someone else\n".encode("cp1251"))
     sandbox.git("add", "finds.csv")
     sandbox.git("commit", "-q", "-m", "more")
@@ -390,9 +419,21 @@ def test_l7_relative_home_is_made_absolute(sandbox, tmp_path):
 
     relative = "relative-guard-home"
     result = subprocess.run(
-        [os.sys.executable, "-I", str(ENGINE), "--home", relative, "install",
-         "--gitleaks", str(sandbox.gitleaks), "--test-mode"],
-        cwd=tmp_path, env=sandbox.env, capture_output=True, text=True,
+        [
+            os.sys.executable,
+            "-I",
+            str(ENGINE),
+            "--home",
+            relative,
+            "install",
+            "--gitleaks",
+            str(sandbox.gitleaks),
+            "--test-mode",
+        ],
+        cwd=tmp_path,
+        env=sandbox.env,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, result.stderr
     stub = (tmp_path / relative / "hooks" / "pre-push").read_text()

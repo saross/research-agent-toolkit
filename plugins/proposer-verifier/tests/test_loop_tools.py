@@ -141,12 +141,17 @@ def test_arguments_with_shell_characters_are_plain_text(tmp_path: Path) -> None:
 def test_count_does_not_depend_on_json_spacing(spaced: bool) -> None:
     """The defect this helper replaces: `"status": "pass"` counted as nothing."""
     lines = [
-        verdict("a-year", "pass", spaced), verdict("a-title", "fail", spaced),
-        verdict("b-year", "partial", spaced), verdict("b-title", "unverifiable", spaced),
+        verdict("a-year", "pass", spaced),
+        verdict("a-title", "fail", spaced),
+        verdict("b-year", "partial", spaced),
+        verdict("b-title", "unverifiable", spaced),
     ]
     result = loop_tools.count_verdicts("\n".join(lines) + "\n", "lit-scout")
     assert (result["PASS_CT"], result["FAIL_CT"], result["PARTIAL_CT"], result["UNVER_CT"]) == (
-        1, 1, 1, 1,
+        1,
+        1,
+        1,
+        1,
     )
     assert result["TOTAL_CT"] == 4 and result["INVALID_CT"] == 0
     assert result["FAIL_SET"] == "a-title" and result["VERDICT"] == "FAIL"
@@ -167,12 +172,20 @@ def test_count_recognises_documentation_defects_and_letter_case() -> None:
 
 @pytest.mark.parametrize(
     "line",
-    ["not json", "[1, 2]", "{}", '{"status": "fail"}', '{"claim_id": "a", "status": "passed"}',
-     '{"claim_id": "a", "status": null}', '{"claim_id": "a-title", "status": "fail"',
-     '{"claim_id": "a-title", "status": "fail", "status": "pass"}',
-     '{"claim_id": "a-title", "claim_id": "b-title", "status": "pass"}',
-     '{"claim_id": "_legacy", "status": "fail"}', '{"claim_id": "_legacy", "status": "pass"}',
-     '{"claim_id": "_legacy"}'],
+    [
+        "not json",
+        "[1, 2]",
+        "{}",
+        '{"status": "fail"}',
+        '{"claim_id": "a", "status": "passed"}',
+        '{"claim_id": "a", "status": null}',
+        '{"claim_id": "a-title", "status": "fail"',
+        '{"claim_id": "a-title", "status": "fail", "status": "pass"}',
+        '{"claim_id": "a-title", "claim_id": "b-title", "status": "pass"}',
+        '{"claim_id": "_legacy", "status": "fail"}',
+        '{"claim_id": "_legacy", "status": "pass"}',
+        '{"claim_id": "_legacy"}',
+    ],
 )
 @pytest.mark.parametrize("loop", ["lit-scout", "prior-art"])
 def test_a_line_that_is_not_a_verdict_is_invalid_and_blocks_a_pass(line: str, loop: str) -> None:
@@ -192,10 +205,14 @@ def test_a_status_from_the_other_loop_is_invalid_for_lit_scout() -> None:
 # ---------------------------------------------------------------------------
 
 EXPECTED = {
-    ("lit-scout", "pass"): "PASS", ("lit-scout", "partial"): "PARTIAL",
-    ("lit-scout", "fail"): "FAIL", ("lit-scout", "unverifiable"): "UNVERIFIABLE",
-    ("prior-art", "pass"): "PASS", ("prior-art", "partial"): "PARTIAL",
-    ("prior-art", "fail"): "FAIL", ("prior-art", "unverifiable"): "PARTIAL",
+    ("lit-scout", "pass"): "PASS",
+    ("lit-scout", "partial"): "PARTIAL",
+    ("lit-scout", "fail"): "FAIL",
+    ("lit-scout", "unverifiable"): "UNVERIFIABLE",
+    ("prior-art", "pass"): "PASS",
+    ("prior-art", "partial"): "PARTIAL",
+    ("prior-art", "fail"): "FAIL",
+    ("prior-art", "unverifiable"): "PARTIAL",
     ("prior-art", "documentation_defect"): "PARTIAL",
 }
 
@@ -222,9 +239,7 @@ def test_one_verdict_short_of_pass_among_many_passes_is_never_a_pass(
         (["partial", "unverifiable", "fail"], "FAIL"),
     ],
 )
-def test_mixtures_follow_the_stated_order_for_lit_scout(
-    statuses: list[str], expected: str
-) -> None:
+def test_mixtures_follow_the_stated_order_for_lit_scout(statuses: list[str], expected: str) -> None:
     text = "\n".join(verdict(f"c{i}", s) for i, s in enumerate(statuses))
     assert loop_tools.count_verdicts(text, "lit-scout")["VERDICT"] == expected
 

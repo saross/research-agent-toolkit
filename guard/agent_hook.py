@@ -55,23 +55,67 @@ FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 # Engine commands that only a person at a terminal should run.
 ADMIN_COMMANDS = {"override", "deny-add", "deny-rebuild", "deny-remove", "deny-check"}
 # Commands that change every path they're given.
-WRITERS_ALL = {"rm", "rmdir", "chmod", "chown", "chgrp", "touch", "truncate", "shred", "unlink",
-               "mkdir", "setfacl", "chattr", "tee"}
+WRITERS_ALL = {
+    "rm",
+    "rmdir",
+    "chmod",
+    "chown",
+    "chgrp",
+    "touch",
+    "truncate",
+    "shred",
+    "unlink",
+    "mkdir",
+    "setfacl",
+    "chattr",
+    "tee",
+}
 # Commands that copy, move, or link sources to a destination: the last operand, or the value of
 # a target-directory option. Each one's short options that take a value (the next word, or the
 # rest of the word), so a value isn't read as an operand (Astra re-review, item 1).
-COPIERS = {"cp": "tS", "mv": "tS", "ln": "tS", "install": "tSmog", "rsync": "efTB",
-           "scp": "cFiJloPS"}
-COPIER_VALUE_LONG = {"--suffix", "--mode", "--owner", "--group", "--rsh", "--filter",
-                     "--exclude", "--include", "--temp-dir", "--partial-dir", "--compare-dest",
-                     "--copy-dest", "--link-dest", "--backup-dir", "--block-size"}
+COPIERS = {
+    "cp": "tS",
+    "mv": "tS",
+    "ln": "tS",
+    "install": "tSmog",
+    "rsync": "efTB",
+    "scp": "cFiJloPS",
+}
+COPIER_VALUE_LONG = {
+    "--suffix",
+    "--mode",
+    "--owner",
+    "--group",
+    "--rsh",
+    "--filter",
+    "--exclude",
+    "--include",
+    "--temp-dir",
+    "--partial-dir",
+    "--compare-dest",
+    "--copy-dest",
+    "--link-dest",
+    "--backup-dir",
+    "--block-size",
+}
 REDIRECT = re.compile(r"^(?:\d*|&)>{1,2}\|?(.*)$")
 HEREDOC = re.compile(r"<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 # `git commit` options whose value is the next word, or the rest of a cluster such as `-am`.
 COMMIT_VALUE_SHORT = set("mFcCt")
-COMMIT_VALUE_LONG = {"--message", "--file", "--reuse-message", "--reedit-message", "--template",
-                     "--author", "--date", "--cleanup", "--fixup", "--squash", "--trailer",
-                     "--pathspec-from-file"}
+COMMIT_VALUE_LONG = {
+    "--message",
+    "--file",
+    "--reuse-message",
+    "--reedit-message",
+    "--template",
+    "--author",
+    "--date",
+    "--cleanup",
+    "--fixup",
+    "--squash",
+    "--trailer",
+    "--pathspec-from-file",
+}
 
 
 def decision(reason: str) -> dict:
@@ -282,7 +326,9 @@ def guard_in_force(cwd: str, home: Path) -> str | None:
     if not stub.is_file():
         return "the guard isn't installed on this machine"
     result = subprocess.run(
-        ["git", "-C", cwd, "config", "--get", "core.hooksPath"], capture_output=True, text=True,
+        ["git", "-C", cwd, "config", "--get", "core.hooksPath"],
+        capture_output=True,
+        text=True,
         timeout=20,
     )
     effective = result.stdout.strip()
@@ -546,14 +592,16 @@ def check(payload: dict, home: Path) -> dict | None:
             if sub == "watch" and any(w == "--clear" or w.startswith("--clear=") for w in engine):
                 # Clearing acknowledges findings; it never shows that the content is clean
                 # (Astra review W5).
-                return decision("`watch --clear` is for a person at their own terminal, not an "
-                                "agent")
+                return decision(
+                    "`watch --clear` is for a person at their own terminal, not an agent"
+                )
             continue
         if _script_run(words, "build-tier1.py") is not None:
             return decision("build-tier1 reads secrets and rebuilds a list; a person runs it")
         sub, args, options = git_subcommand(words)
         if sub is not None and any(
-            HOOKS_PATH.search(p) or p.startswith(("GIT_CONFIG", "HOME="))
+            HOOKS_PATH.search(p)
+            or p.startswith(("GIT_CONFIG", "HOME="))
             or p in ("-i", "-u", "--ignore-environment", "--unset")
             for p in prefix
         ):

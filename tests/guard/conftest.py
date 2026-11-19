@@ -74,15 +74,13 @@ class Sandbox:
         }
         self.gitconfig.write_text(
             "[user]\n\tname = Test Person\n\temail = test@example.invalid\n"
-            "[init]\n\tdefaultBranch = main\n[protocol \"file\"]\n\tallow = always\n"
+            '[init]\n\tdefaultBranch = main\n[protocol "file"]\n\tallow = always\n'
         )
         self.calls = root / "gitleaks-calls.jsonl"
         self.gitleaks = root / "bin" / "gitleaks"
         self.gitleaks.parent.mkdir()
         self.gitleaks.write_text(
-            FAKE_GITLEAKS.format(
-                python=sys.executable, calls=str(self.calls), secret=FAKE_SECRET
-            )
+            FAKE_GITLEAKS.format(python=sys.executable, calls=str(self.calls), secret=FAKE_SECRET)
         )
         self.gitleaks.chmod(0o755)
         self.visibility_map = root / "visibility.json"
@@ -133,15 +131,21 @@ class Sandbox:
         """Run the engine directly, with this sandbox's guard folder."""
         command = [sys.executable, "-I", str(ENGINE), "--home", str(self.guard), *args]
         return subprocess.run(
-            command, text=True, capture_output=True, input=stdin, env=env or self.env,
+            command,
+            text=True,
+            capture_output=True,
+            input=stdin,
+            env=env or self.env,
             cwd=self.work if self.root.joinpath("work").exists() else self.root,
         )
 
     def install(self, *extra: str) -> None:
         result = self.engine(
             "install",
-            "--gitleaks", str(self.gitleaks),
-            "--visibility-map", str(self.visibility_map),
+            "--gitleaks",
+            str(self.gitleaks),
+            "--visibility-map",
+            str(self.visibility_map),
             "--test-mode",
             *extra,
         )
@@ -154,8 +158,12 @@ class Sandbox:
     # ------------------------------------------------------------------ git helpers
     def git(self, *args: str, check: bool = True, cwd: Path | None = None, env: dict | None = None):
         return subprocess.run(
-            ["git", *args], text=True, capture_output=True, check=check,
-            cwd=cwd or self.work, env=env or self.env,
+            ["git", *args],
+            text=True,
+            capture_output=True,
+            check=check,
+            cwd=cwd or self.work,
+            env=env or self.env,
         )
 
     def commit(self, path: str, text: str, message: str = "change", env: dict | None = None) -> str:
@@ -176,14 +184,21 @@ class Sandbox:
     def remote_refs(self, remote: Path | None = None) -> str:
         return subprocess.run(
             ["git", "ls-remote", str(remote or self.public)],
-            text=True, capture_output=True, env=self.env,
+            text=True,
+            capture_output=True,
+            env=self.env,
         ).stdout
 
     def remote_has(self, sha: str, remote: Path | None = None) -> bool:
-        return subprocess.run(
-            ["git", "cat-file", "-e", sha], cwd=remote or self.public,
-            capture_output=True, env=self.env,
-        ).returncode == 0
+        return (
+            subprocess.run(
+                ["git", "cat-file", "-e", sha],
+                cwd=remote or self.public,
+                capture_output=True,
+                env=self.env,
+            ).returncode
+            == 0
+        )
 
     def seed_public(self) -> str:
         """Push the first commit, so later pushes have a known public starting point."""

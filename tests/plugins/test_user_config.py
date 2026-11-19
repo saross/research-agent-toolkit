@@ -69,7 +69,9 @@ def test_proposer_verifier_declares_its_three_commands() -> None:
     """The options exist under the names the documentation gives."""
     declared = _declared(PLUGINS / "proposer-verifier")
     assert set(declared) == {
-        "library_check_command", "library_import_command", "verification_log_command",
+        "library_check_command",
+        "library_import_command",
+        "verification_log_command",
     }
     assert all(spec["type"] == "string" for spec in declared.values())
 

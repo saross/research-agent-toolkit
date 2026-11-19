@@ -82,7 +82,7 @@ def normalise(doi: str) -> str:
     text = doi.strip().lower()
     for prefix in PREFIXES:
         if text.startswith(prefix):
-            return text[len(prefix):].strip()
+            return text[len(prefix) :].strip()
     return text
 
 
@@ -122,8 +122,7 @@ def main() -> int:
     except (FileNotFoundError, sqlite3.Error) as error:
         print(f"library check failed: {error}", file=sys.stderr)
         if "locked" in str(error).lower():
-            print("Zotero may have the database open: close Zotero and try again.",
-                  file=sys.stderr)
+            print("Zotero may have the database open: close Zotero and try again.", file=sys.stderr)
         return 1
     held.discard("")
     for line in sys.stdin:

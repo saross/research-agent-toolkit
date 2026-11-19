@@ -54,6 +54,7 @@ from bibtexparser.bwriter import BibTexWriter
 # Configuration
 # ============================================================================
 
+
 def _resolve_mailto() -> str | None:
     """
     Contact address sent to CrossRef and OpenAlex, read from the environment.
@@ -76,9 +77,7 @@ def _resolve_mailto() -> str | None:
 
 
 MAILTO = _resolve_mailto()
-USER_AGENT = (
-    f"lit-scout/1.0 (mailto:{MAILTO})" if MAILTO else "lit-scout/1.0"
-)
+USER_AGENT = f"lit-scout/1.0 (mailto:{MAILTO})" if MAILTO else "lit-scout/1.0"
 
 # API base URLs
 CROSSREF_BASE = "https://api.crossref.org"
@@ -144,7 +143,7 @@ def _bare_doi(doi: str) -> str | None:
     if match is None:
         return text
     try:
-        return urllib.parse.unquote(text[match.end():], errors="strict")
+        return urllib.parse.unquote(text[match.end() :], errors="strict")
     except UnicodeDecodeError:
         return None
 
@@ -195,10 +194,7 @@ def _env_float(name: str, default: float) -> float:
     except ValueError:
         # `log` is configured later in this module; emit via stderr
         # directly to avoid an import-order dependency.
-        sys.stderr.write(
-            f"WARNING: {name}={raw!r} is not a float; using default "
-            f"{default}.\n"
-        )
+        sys.stderr.write(f"WARNING: {name}={raw!r} is not a float; using default {default}.\n")
         return default
 
 
@@ -210,10 +206,7 @@ def _env_int(name: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError:
-        sys.stderr.write(
-            f"WARNING: {name}={raw!r} is not an int; using default "
-            f"{default}.\n"
-        )
+        sys.stderr.write(f"WARNING: {name}={raw!r} is not an int; using default {default}.\n")
         return default
 
 
@@ -277,9 +270,7 @@ BACKOFF_JITTER = _env_float("LIT_SEARCH_BACKOFF_JITTER", 0.5)  # +/- fraction
 # required — absence simply uses the public unauthenticated tier, exactly as
 # before. Both common env-var spellings are accepted.
 S2_API_KEY = (
-    os.environ.get("S2_API_KEY")
-    or os.environ.get("SEMANTIC_SCHOLAR_API_KEY")
-    or ""
+    os.environ.get("S2_API_KEY") or os.environ.get("SEMANTIC_SCHOLAR_API_KEY") or ""
 ).strip()
 
 # Optional OpenAlex API key. Free to register at
@@ -289,9 +280,7 @@ S2_API_KEY = (
 # help.openalex.org on 2026-08-21; note the GitHub docs mirror still
 # describes the retired pre-2026 "100,000 credits, no key needed" model.
 OPENALEX_API_KEY = (
-    os.environ.get("OPENALEX_API_KEY")
-    or os.environ.get("OPENALEX_KEY")
-    or ""
+    os.environ.get("OPENALEX_API_KEY") or os.environ.get("OPENALEX_KEY") or ""
 ).strip()
 
 # Default result limits
@@ -540,7 +529,7 @@ def _backoff_delay(attempt: int) -> float:
     jitter spreads out retries so concurrent/repeated callers do not stampede
     the API in lockstep ("thundering herd").
     """
-    raw = BASE_BACKOFF * (2 ** attempt)
+    raw = BASE_BACKOFF * (2**attempt)
     jitter = 1.0 + random.uniform(-BACKOFF_JITTER, BACKOFF_JITTER)
     return min(MAX_BACKOFF, max(0.0, raw * jitter))
 
@@ -596,8 +585,11 @@ def _request_with_retry(
                 delay = _backoff_delay(attempt)
                 log.warning(
                     "%s: connection error (%s); retry %d/%d in %.1fs.",
-                    source, type(exc).__name__, attempt + 1,
-                    MAX_RETRIES - 1, delay,
+                    source,
+                    type(exc).__name__,
+                    attempt + 1,
+                    MAX_RETRIES - 1,
+                    delay,
                 )
                 time.sleep(delay)
                 continue
@@ -616,29 +608,32 @@ def _request_with_retry(
             return resp
 
         if resp.status_code == 429:
-            retry_after = _parse_retry_after(
-                resp.headers.get("Retry-After", "")
-            )
+            retry_after = _parse_retry_after(resp.headers.get("Retry-After", ""))
             if retry_after is not None:
                 # Respect the server's hint, but never below the backoff
                 # floor for this attempt and never above the global cap.
-                delay = min(
-                    MAX_BACKOFF, max(retry_after, _backoff_delay(attempt))
-                )
+                delay = min(MAX_BACKOFF, max(retry_after, _backoff_delay(attempt)))
                 hint = f"Retry-After={retry_after:.1f}s"
             else:
                 delay = _backoff_delay(attempt)
                 hint = "no Retry-After"
             log.warning(
                 "%s: rate limited (429, %s); retry %d/%d in %.1fs.",
-                source, hint, attempt + 1, MAX_RETRIES - 1, delay,
+                source,
+                hint,
+                attempt + 1,
+                MAX_RETRIES - 1,
+                delay,
             )
         else:
             delay = _backoff_delay(attempt)
             log.warning(
                 "%s: server error (HTTP %d); retry %d/%d in %.1fs.",
-                source, resp.status_code, attempt + 1,
-                MAX_RETRIES - 1, delay,
+                source,
+                resp.status_code,
+                attempt + 1,
+                MAX_RETRIES - 1,
+                delay,
             )
         time.sleep(delay)
 
@@ -697,7 +692,9 @@ def _safe_get(
                 "[lit-search] WARN: %s still rate-limited after %d "
                 "attempts (HTTP 429); returning None — caller cannot "
                 "distinguish this from 404. URL: %s",
-                source, MAX_RETRIES, url,
+                source,
+                MAX_RETRIES,
+                url,
             )
             return None
         if resp.status_code != 200:
@@ -709,14 +706,18 @@ def _safe_get(
             kind = "transient (5xx)" if 500 <= resp.status_code < 600 else "terminal"
             log.warning(
                 "%s: HTTP %d (%s) for %s",
-                source, resp.status_code, kind, url,
+                source,
+                resp.status_code,
+                kind,
+                url,
             )
             return None
         data = resp.json()
         if not isinstance(data, dict):
             log.warning(
                 "%s: unexpected response type: %s",
-                source, type(data).__name__,
+                source,
+                type(data).__name__,
             )
             return None
         return data
@@ -725,7 +726,9 @@ def _safe_get(
         # rather than be swallowed as "request failed".
         log.warning(
             "[lit-search] WARN: %s request failed (%s): %s",
-            source, type(exc).__name__, _redact(str(exc)),
+            source,
+            type(exc).__name__,
+            _redact(str(exc)),
         )
         return None
 
@@ -797,11 +800,7 @@ def _openalex_paginate(
         # before, terminate to avoid infinite loops on malformed
         # responses. (`cursor` here is what we sent on this iteration.)
         next_cursor = (page.get("meta") or {}).get("next_cursor")
-        if (
-            not next_cursor
-            or next_cursor == cursor
-            or next_cursor in seen_cursors
-        ):
+        if not next_cursor or next_cursor == cursor or next_cursor in seen_cursors:
             break
         seen_cursors.add(cursor)
         cursor = next_cursor
@@ -985,7 +984,7 @@ def _normalise_openalex(raw: dict) -> dict[str, Any]:
 
     # OpenAlex DOI includes a URL prefix (various formats seen)
     doi_url = raw.get("doi") or ""
-    doi = re.sub(r'^https?://(dx\.)?doi\.org/', '', doi_url) if doi_url else None
+    doi = re.sub(r"^https?://(dx\.)?doi\.org/", "", doi_url) if doi_url else None
 
     # OpenAlex ID is a URL like https://openalex.org/W1234567
     oa_id = raw.get("id", "")
@@ -1313,13 +1312,15 @@ def _agency_record(doi: str, client: httpx.Client) -> dict | None:
     except httpx.HTTPError as exc:
         log.warning(
             "doi.org: no answer for a CSL-JSON record of %s (%s)",
-            requested, _redact(str(exc)) or type(exc).__name__,
+            requested,
+            _redact(str(exc)) or type(exc).__name__,
         )
         return None
     if resp.status_code != 200:
         log.warning(
             "doi.org: HTTP %d for a CSL-JSON record of %s",
-            resp.status_code, requested,
+            resp.status_code,
+            requested,
         )
         return None
     try:
@@ -1441,9 +1442,7 @@ def cmd_references(
         refs = data["message"].get("reference", [])
         for ref in refs:
             paper = {
-                "title": ref.get("article-title") or ref.get(
-                    "unstructured"
-                ),
+                "title": ref.get("article-title") or ref.get("unstructured"),
                 "authors": [],
                 "year": _parse_year(ref.get("year")),
                 "doi": ref.get("DOI"),
@@ -1503,9 +1502,11 @@ def cmd_references(
             # `per_page` is capped at OPENALEX_PER_PAGE_MAX (200) by the API;
             # if the user asks for more, page the filter via cursor.
             id_filter = "|".join(ref_ids)
-            base_params = _polite({
-                "filter": f"openalex:{id_filter}",
-            })
+            base_params = _polite(
+                {
+                    "filter": f"openalex:{id_filter}",
+                }
+            )
             results = _openalex_paginate(
                 client,
                 f"{OPENALEX_BASE}/works",
@@ -1579,23 +1580,24 @@ def cmd_citations(
         results = _openalex_paginate(
             client,
             f"{OPENALEX_BASE}/works",
-            _polite({
-                "filter": f"cites:{oa_id}",
-                "sort": "cited_by_count:desc",
-            }),
+            _polite(
+                {
+                    "filter": f"cites:{oa_id}",
+                    "sort": "cited_by_count:desc",
+                }
+            ),
             limit=limit,
         )
         for work in results:
             all_papers.append(_normalise_openalex(work))
         log.info(
-            "OpenAlex: found %d citing papers", len(results),
+            "OpenAlex: found %d citing papers",
+            len(results),
         )
 
     deduped = _deduplicate(all_papers)
     # Sort by citation count descending (most-cited first)
-    deduped.sort(
-        key=lambda p: p.get("citation_count") or 0, reverse=True
-    )
+    deduped.sort(key=lambda p: p.get("citation_count") or 0, reverse=True)
     return deduped[:limit]
 
 
@@ -1642,10 +1644,12 @@ def cmd_search(
         client,
         f"{OPENALEX_BASE}/works",
         "openalex",
-        params=_polite({
-            "search": query,
-            "per_page": str(limit),
-        }),
+        params=_polite(
+            {
+                "search": query,
+                "per_page": str(limit),
+            }
+        ),
     )
     if data and "results" in data:
         for work in data["results"]:
@@ -1683,9 +1687,7 @@ def cmd_openalex_cited_by(
 
     oa_id = oa_data["id"]
     total_citations = oa_data.get("cited_by_count", 0)
-    log.info(
-        "OpenAlex: paper has %d total citations", total_citations
-    )
+    log.info("OpenAlex: paper has %d total citations", total_citations)
 
     # Fetch citing papers via cursor pagination.
     # Audit 2026-05-02 (D-M6): the previous code took the first page only
@@ -1694,10 +1696,12 @@ def cmd_openalex_cited_by(
     raw_results = _openalex_paginate(
         client,
         f"{OPENALEX_BASE}/works",
-        _polite({
-            "filter": f"cites:{oa_id}",
-            "sort": "cited_by_count:desc",
-        }),
+        _polite(
+            {
+                "filter": f"cites:{oa_id}",
+                "sort": "cited_by_count:desc",
+            }
+        ),
         limit=limit,
     )
     if not raw_results:
@@ -1705,9 +1709,7 @@ def cmd_openalex_cited_by(
         return []
 
     papers = [_normalise_openalex(w) for w in raw_results]
-    papers.sort(
-        key=lambda p: p.get("citation_count") or 0, reverse=True
-    )
+    papers.sort(key=lambda p: p.get("citation_count") or 0, reverse=True)
     return papers[:limit]
 
 
@@ -1799,8 +1801,7 @@ def _usable_url(text: str) -> bool:
     not a number in range), and a malformed percent escape anywhere.
     """
     if not text or any(
-        ch.isspace() or ch in _NEVER_IN_A_URI
-        or unicodedata.category(ch) in _REFUSED_CATEGORIES
+        ch.isspace() or ch in _NEVER_IN_A_URI or unicodedata.category(ch) in _REFUSED_CATEGORIES
         for ch in text
     ):
         return False
@@ -1913,7 +1914,9 @@ def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
     try:
         resp = _request_with_retry(
             lambda: client.get(
-                url, headers=DOI_ORG_HEADERS, timeout=DOI_HANDLE_TIMEOUT,
+                url,
+                headers=DOI_ORG_HEADERS,
+                timeout=DOI_HANDLE_TIMEOUT,
                 follow_redirects=False,
             ),
             host=_host_of(url),
@@ -1966,10 +1969,14 @@ def cmd_doi_exists(doi: str, client: httpx.Client) -> dict:
             )
         else:
             result["state"] = "registered_no_url"
-            result["reason"] = no_url if not url_values else (
-                "the DOI is registered, but this check established no supported URL "
-                f"value: none of its {url_values} URL value(s) is an absolute http or "
-                "https URL in a supported representation (format string, base64, or hex)"
+            result["reason"] = (
+                no_url
+                if not url_values
+                else (
+                    "the DOI is registered, but this check established no supported URL "
+                    f"value: none of its {url_values} URL value(s) is an absolute http or "
+                    "https URL in a supported representation (format string, base64, or hex)"
+                )
             )
     elif (status, code) == (200, 200):
         result["state"] = "registered_no_url"
@@ -2042,7 +2049,9 @@ def cmd_bibtex(
     if missing:
         log.warning(
             "bibtex: %d of %d DOIs produced an entry; none for: %s",
-            made, len(dois), ", ".join(missing),
+            made,
+            len(dois),
+            ", ".join(missing),
         )
     else:
         log.warning("bibtex: %d of %d DOIs produced an entry", made, len(dois))
@@ -2063,10 +2072,23 @@ _BIBTEX_KEY = re.compile(r"^(@\w+\s*[{(])([^,]+)(,)", re.MULTILINE)
 #: real run of 0.3.1); names are matched without regard to case.
 _EXTRA_MONTH_MACROS = {
     "sept": "September",
-    **{name.lower(): name for name in (
-        "January", "February", "March", "April", "May", "June", "July",
-        "August", "September", "October", "November", "December",
-    )},
+    **{
+        name.lower(): name
+        for name in (
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        )
+    },
 }
 
 
@@ -2118,10 +2140,7 @@ def _bibtex_record(text: str) -> str | None:
         # An empty optional field ("note={}") is dropped, not a reason to refuse
         # the record (review finding R25); a record needs a key and at least one
         # field with a value. A malformed "title=" never parses as an entry.
-        fields = {
-            k: v for k, v in entry.items()
-            if k not in ("ID", "ENTRYTYPE") and str(v).strip()
-        }
+        fields = {k: v for k, v in entry.items() if k not in ("ID", "ENTRYTYPE") and str(v).strip()}
         if not key or not fields:
             continue
         single = BibDatabase()
@@ -2145,8 +2164,7 @@ def _fetch_bibtex_record(
     keeps its own bounded retries through ``_request_with_retry``.
     """
     crossref = (
-        f"{CROSSREF_BASE}/works/{urllib.parse.quote(doi, safe='')}"
-        "/transform/application/x-bibtex"
+        f"{CROSSREF_BASE}/works/{urllib.parse.quote(doi, safe='')}/transform/application/x-bibtex"
     )
     # The resolver forwards to whichever registry holds the DOI (DataCite
     # for arXiv and Zenodo, among others).
@@ -2164,11 +2182,14 @@ def _fetch_bibtex_record(
     for label, url, source, leg_headers, follow in sources:
         try:
             if follow:
+
                 def request(u: str = url, h: dict[str, str] = leg_headers) -> httpx.Response:
                     return client.get(u, headers=h, follow_redirects=True)
             else:
+
                 def request(u: str = url, h: dict[str, str] = leg_headers) -> httpx.Response:
                     return client.get(u, headers=h)
+
             resp = _request_with_retry(request, host=_host_of(url), source=source)
         except httpx.HTTPError as exc:
             reasons.append(f"{label}: " + _redact(str(exc)).replace("\n", " "))
@@ -2180,8 +2201,8 @@ def _fetch_bibtex_record(
         record = _bibtex_record(text)
         if record is None:
             reasons.append(
-                f"{label}: " + ("empty response" if not text.strip()
-                                else "no complete BibTeX record")
+                f"{label}: "
+                + ("empty response" if not text.strip() else "no complete BibTeX record")
             )
             continue
         return record, reasons
@@ -2225,11 +2246,10 @@ def _dedupe_bibtex_key(entry: str, seen: set[str]) -> str:
     seen.add(candidate)
     log.warning(
         "bibtex: citation key %r already used; emitting %r instead",
-        key, candidate,
+        key,
+        candidate,
     )
-    return _BIBTEX_KEY.sub(
-        lambda m: f"{m.group(1)}{candidate}{m.group(3)}", entry, count=1
-    )
+    return _BIBTEX_KEY.sub(lambda m: f"{m.group(1)}{candidate}{m.group(3)}", entry, count=1)
 
 
 def _parse_year(value: Any) -> int | None:
@@ -2257,15 +2277,11 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # metadata
-    p_meta = subparsers.add_parser(
-        "metadata", help="Full metadata for a single DOI"
-    )
+    p_meta = subparsers.add_parser("metadata", help="Full metadata for a single DOI")
     p_meta.add_argument("doi", help="DOI to look up")
 
     # references
-    p_refs = subparsers.add_parser(
-        "references", help="Backward chaining: get reference list"
-    )
+    p_refs = subparsers.add_parser("references", help="Backward chaining: get reference list")
     p_refs.add_argument("doi", help="DOI to get references for")
     p_refs.add_argument(
         "--limit",
@@ -2275,9 +2291,7 @@ def main() -> None:
     )
 
     # citations
-    p_cites = subparsers.add_parser(
-        "citations", help="Forward chaining: get citing papers"
-    )
+    p_cites = subparsers.add_parser("citations", help="Forward chaining: get citing papers")
     p_cites.add_argument("doi", help="DOI to get citations for")
     p_cites.add_argument(
         "--limit",
@@ -2287,9 +2301,7 @@ def main() -> None:
     )
 
     # search
-    p_search = subparsers.add_parser(
-        "search", help="Keyword/title search"
-    )
+    p_search = subparsers.add_parser("search", help="Keyword/title search")
     p_search.add_argument("query", help="Search query")
     p_search.add_argument(
         "--limit",
@@ -2345,9 +2357,7 @@ def main() -> None:
         elif args.command == "search":
             result = cmd_search(args.query, client, args.limit)
         elif args.command == "openalex-cited-by":
-            result = cmd_openalex_cited_by(
-                args.doi, client, args.limit
-            )
+            result = cmd_openalex_cited_by(args.doi, client, args.limit)
         elif args.command == "doi-exists":
             result = cmd_doi_exists(args.doi, client)
         elif args.command == "bibtex":

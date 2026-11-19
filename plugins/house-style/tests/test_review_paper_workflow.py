@@ -34,8 +34,9 @@ TARGET = f"{REPO}/sections/methods.tex"
 CORE_LENSES = {"source-fidelity", "consistency", "calibration", "completeness"}
 
 
-def run(tmp_path: Path, args: Any, responses: dict | None = None,
-        default: dict | None = None) -> dict:
+def run(
+    tmp_path: Path, args: Any, responses: dict | None = None, default: dict | None = None
+) -> dict:
     """Run the workflow under the harness and return its JSON report."""
     scenario = {"args": args, "responses": responses or {}}
     if default is not None:
@@ -44,7 +45,10 @@ def run(tmp_path: Path, args: Any, responses: dict | None = None,
     path.write_text(json.dumps(scenario), encoding="utf-8")
     proc = subprocess.run(
         [NODE, str(HARNESS), str(SCRIPT), str(path)],
-        capture_output=True, text=True, timeout=60, check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
@@ -57,14 +61,24 @@ def base_args(**extra: Any) -> dict:
 
 def finding(severity: str, evidence: str = "sections/methods.tex:10", **extra: Any) -> dict:
     """One lens finding of the given severity."""
-    return {"severity": severity, "dimension": "test", "detail": "a problem",
-            "evidence": evidence, **extra}
+    return {
+        "severity": severity,
+        "dimension": "test",
+        "detail": "a problem",
+        "evidence": evidence,
+        **extra,
+    }
 
 
 def adversarial_finding(severity: str, evidence: str = "sections/methods.tex:10") -> dict:
     """A finding carrying the adversarial stance's required fields."""
-    return finding(severity, evidence, targetClaim="the claim",
-                   counterCondition="if shown X", retractionCondition="evidence Y")
+    return finding(
+        severity,
+        evidence,
+        targetClaim="the claim",
+        counterCondition="if shown X",
+        retractionCondition="evidence Y",
+    )
 
 
 def lens_labels(report: dict) -> set[str]:
@@ -75,15 +89,18 @@ def lens_labels(report: dict) -> set[str]:
 class TestArguments:
     """Bad arguments stop the run before any agent is dispatched."""
 
-    @pytest.mark.parametrize("args, message", [
-        ({"repo": REPO}, "targets"),
-        ({"targets": ["sections/methods.tex"], "repo": REPO}, "absolute"),
-        ({"targets": [TARGET]}, "repo"),
-        (base_args(stance="friendly"), "unknown stance"),
-        (base_args(voice=True), "voiceReference"),
-        (base_args(lensSet=["constraints"]), "not configured"),
-        (base_args(lensSet=["no-such-lens"]), "unknown"),
-    ])
+    @pytest.mark.parametrize(
+        "args, message",
+        [
+            ({"repo": REPO}, "targets"),
+            ({"targets": ["sections/methods.tex"], "repo": REPO}, "absolute"),
+            ({"targets": [TARGET]}, "repo"),
+            (base_args(stance="friendly"), "unknown stance"),
+            (base_args(voice=True), "voiceReference"),
+            (base_args(lensSet=["constraints"]), "not configured"),
+            (base_args(lensSet=["no-such-lens"]), "unknown"),
+        ],
+    )
     def test_rejected_before_any_agent(self, tmp_path: Path, args: dict, message: str) -> None:
         """Each invalid case fails fast, naming the problem."""
         report = run(tmp_path, args)
@@ -115,19 +132,25 @@ class TestModelAndLenses:
     def test_core_lenses_run_and_optional_ones_need_configuring(self, tmp_path: Path) -> None:
         """Four core lenses by default; constraints and voice only when set up."""
         assert lens_labels(run(tmp_path, base_args())) == CORE_LENSES
-        both = run(tmp_path, base_args(constraints="no first person", voice=True,
-                                       voiceReference="/notes/register.md"))
+        both = run(
+            tmp_path,
+            base_args(
+                constraints="no first person", voice=True, voiceReference="/notes/register.md"
+            ),
+        )
         assert lens_labels(both) == CORE_LENSES | {"constraints", "voice"}
 
     def test_source_notes_folder_reaches_the_source_fidelity_lens(self, tmp_path: Path) -> None:
         """The lens is told where the notes are, or that there are none."""
         with_notes = run(tmp_path, base_args(sourceNotesDir="/papers/example/notes"))
-        prompt = next(c["prompt"] for c in with_notes["calls"]
-                      if c["label"].startswith("source-fidelity"))
+        prompt = next(
+            c["prompt"] for c in with_notes["calls"] if c["label"].startswith("source-fidelity")
+        )
         assert "/papers/example/notes" in prompt
         without = run(tmp_path, base_args())
-        prompt = next(c["prompt"] for c in without["calls"]
-                      if c["label"].startswith("source-fidelity"))
+        prompt = next(
+            c["prompt"] for c in without["calls"] if c["label"].startswith("source-fidelity")
+        )
         assert "NO source notes supplied" in prompt
 
     def test_adversarial_findings_must_carry_the_hard_rule_fields(self, tmp_path: Path) -> None:
@@ -135,7 +158,8 @@ class TestModelAndLenses:
         report = run(tmp_path, base_args(stance="adversarial"))
         lens_call = next(c for c in report["calls"] if c["phase"] == "Review")
         assert {"targetClaim", "counterCondition", "retractionCondition"} <= set(
-            lens_call["findingRequired"])
+            lens_call["findingRequired"]
+        )
         friendly = run(tmp_path, base_args())
         lens_call = next(c for c in friendly["calls"] if c["phase"] == "Review")
         assert "targetClaim" not in lens_call["findingRequired"]
@@ -145,7 +169,8 @@ class TestDeterministicVerdict:
     """Severities decide the verdict; an agent's own 'passes' never does."""
 
     def test_clean_critical_friend_run_is_cleared_with_no_ladder_verdict(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Critical-friend has no verdict ladder and no meta-review."""
         result = run(tmp_path, base_args())["result"]
@@ -154,13 +179,22 @@ class TestDeterministicVerdict:
         assert result["metaReview"] is None
 
     def test_a_blocker_challenges_even_when_the_agent_says_it_passes(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """passes=true with a blocker finding still gives CHALLENGED."""
-        report = run(tmp_path, base_args(stance="adversarial"), responses={
-            "calibration": {"passes": True, "findings": [adversarial_finding("blocker")],
-                            "clean": [], "confidence": "high"},
-        })
+        report = run(
+            tmp_path,
+            base_args(stance="adversarial"),
+            responses={
+                "calibration": {
+                    "passes": True,
+                    "findings": [adversarial_finding("blocker")],
+                    "clean": [],
+                    "confidence": "high",
+                },
+            },
+        )
         result = report["result"]
         assert result["verdict"] == "CHALLENGED"
         assert result["cleared"] is False
@@ -169,24 +203,41 @@ class TestDeterministicVerdict:
         assert "meta-reviewer" in {c["label"] for c in report["calls"]}
 
     def test_a_clean_adversarial_panel_triggers_the_unanimous_check(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Its major finding joins the aggregation and qualifies the verdict."""
-        report = run(tmp_path, base_args(stance="adversarial"), responses={
-            "unanimous-check": {"passes": False, "findings": [adversarial_finding("major")],
-                                "clean": [], "confidence": "medium"},
-        })
+        report = run(
+            tmp_path,
+            base_args(stance="adversarial"),
+            responses={
+                "unanimous-check": {
+                    "passes": False,
+                    "findings": [adversarial_finding("major")],
+                    "clean": [],
+                    "confidence": "medium",
+                },
+            },
+        )
         result = report["result"]
         assert "unanimous-check" in {c["label"] for c in report["calls"]}
         assert result["verdict"] == "QUALIFIED"
         assert any(f["lens"] == "unanimous-check" for f in result["findings"])
 
     def test_prepass_findings_join_the_verdict_but_not_the_unanimity_trigger(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """A mechanical blocker challenges; the clean panel is still stress-tested."""
-        prepass = [{"check": "inputs", "severity": "blocker", "detail": "target not found",
-                    "evidence": "x", "target": "sections/methods.tex"}]
+        prepass = [
+            {
+                "check": "inputs",
+                "severity": "blocker",
+                "detail": "target not found",
+                "evidence": "x",
+                "target": "sections/methods.tex",
+            }
+        ]
         report = run(tmp_path, base_args(stance="adversarial", prepassFindings=prepass))
         result = report["result"]
         assert result["verdict"] == "CHALLENGED"
@@ -197,11 +248,11 @@ class TestCoverage:
     """Failed agents make coverage partial, and never a clean pass."""
 
     def test_one_failed_lens_is_reported_and_blocks_the_unanimous_check(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """partialCoverage counts it; unanimity needs the whole panel."""
-        report = run(tmp_path, base_args(stance="adversarial"),
-                     responses={"completeness": None})
+        report = run(tmp_path, base_args(stance="adversarial"), responses={"completeness": None})
         result = report["result"]
         assert result["partialCoverage"] == 1
         assert "unanimous-check" not in {c["label"] for c in report["calls"]}
@@ -224,12 +275,24 @@ class TestConvergence:
 
     def test_two_lenses_citing_one_line_converge(self, tmp_path: Path) -> None:
         """Both findings are marked converged and grouped by the shared line."""
-        report = run(tmp_path, base_args(), responses={
-            "consistency": {"passes": False, "findings": [finding("minor", "methods.tex:42")],
-                            "clean": [], "confidence": "high"},
-            "calibration": {"passes": False, "findings": [finding("minor", "line :42 here")],
-                            "clean": [], "confidence": "high"},
-        })
+        report = run(
+            tmp_path,
+            base_args(),
+            responses={
+                "consistency": {
+                    "passes": False,
+                    "findings": [finding("minor", "methods.tex:42")],
+                    "clean": [],
+                    "confidence": "high",
+                },
+                "calibration": {
+                    "passes": False,
+                    "findings": [finding("minor", "line :42 here")],
+                    "clean": [],
+                    "confidence": "high",
+                },
+            },
+        )
         result = report["result"]
         converged = [f for f in result["findings"] if f.get("converged")]
         assert {f["lens"] for f in converged} == {"consistency", "calibration"}
@@ -250,22 +313,36 @@ class TestConvergenceAnchors:
     @staticmethod
     def _two(tmp_path: Path, first: str, second: str) -> dict:
         """Run with one minor finding from each of two lenses, evidence as given."""
-        return run(tmp_path, base_args(), responses={
-            "consistency": {"passes": False, "findings": [finding("minor", first)],
-                            "clean": [], "confidence": "high"},
-            "calibration": {"passes": False, "findings": [finding("minor", second)],
-                            "clean": [], "confidence": "high"},
-        })["result"]
+        return run(
+            tmp_path,
+            base_args(),
+            responses={
+                "consistency": {
+                    "passes": False,
+                    "findings": [finding("minor", first)],
+                    "clean": [],
+                    "confidence": "high",
+                },
+                "calibration": {
+                    "passes": False,
+                    "findings": [finding("minor", second)],
+                    "clean": [],
+                    "confidence": "high",
+                },
+            },
+        )["result"]
 
     def test_the_same_line_number_in_another_file_does_not_converge(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """refs.bib:7 is not line 7 of the section."""
         result = self._two(tmp_path, "refs.bib:7", "sections/methods.tex:7")
         assert not any(f.get("converged") for f in result["findings"])
 
     def test_a_log_line_does_not_converge_with_a_bare_target_line(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """main.blg:6 against a bare :6, which belongs to the target."""
         result = self._two(tmp_path, "main.blg:6", "see :6")
@@ -289,10 +366,15 @@ class TestMetaReviewerContext:
     """The meta-reviewer is given what the lenses were given (found in a real run)."""
 
     def test_brief_notes_and_bibliography_reach_the_meta_reviewer(self, tmp_path: Path) -> None:
-        report = run(tmp_path, base_args(
-            stance="adversarial", paperBrief="Mounds were sited to be seen.",
-            sourceNotesDir="/papers/example/notes", bibPaths=["/papers/example/refs.bib"],
-        ))
+        report = run(
+            tmp_path,
+            base_args(
+                stance="adversarial",
+                paperBrief="Mounds were sited to be seen.",
+                sourceNotesDir="/papers/example/notes",
+                bibPaths=["/papers/example/refs.bib"],
+            ),
+        )
         meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
         assert "Mounds were sited to be seen." in meta
         assert "/papers/example/notes" in meta and "/papers/example/refs.bib" in meta
@@ -308,17 +390,29 @@ class TestAnchorPathsKeepTheirFolders:
 
     def test_same_name_in_two_folders_does_not_converge(self, tmp_path: Path) -> None:
         result = TestConvergenceAnchors._two(
-            tmp_path, "sections/methods.tex:42", "appendix/methods.tex:42")
+            tmp_path, "sections/methods.tex:42", "appendix/methods.tex:42"
+        )
         assert not any(f.get("converged") for f in result["findings"])
 
     def test_a_bare_name_resolves_to_each_findings_own_target(self, tmp_path: Path) -> None:
         """Two targets named methods.tex: "methods.tex:42" means each lens's own target."""
-        args = {"targets": [f"{REPO}/sections/methods.tex", f"{REPO}/appendix/methods.tex"],
-                "repo": REPO, "scope": "section"}
-        report = run(tmp_path, args, responses={
-            "consistency:methods.tex": {"passes": False, "clean": [], "confidence": "high",
-                                        "findings": [finding("minor", "methods.tex:42")]},
-        })
+        args = {
+            "targets": [f"{REPO}/sections/methods.tex", f"{REPO}/appendix/methods.tex"],
+            "repo": REPO,
+            "scope": "section",
+        }
+        report = run(
+            tmp_path,
+            args,
+            responses={
+                "consistency:methods.tex": {
+                    "passes": False,
+                    "clean": [],
+                    "confidence": "high",
+                    "findings": [finding("minor", "methods.tex:42")],
+                },
+            },
+        )
         assert report["ok"], report.get("error")
         # Each target's own lens resolves "methods.tex" to its own target, so the
         # two findings (one per target) carry different tokens and do not converge.
@@ -328,15 +422,21 @@ class TestAnchorPathsKeepTheirFolders:
 class TestRulingsReachEveryStage:
     """Review finding R29: settled rulings reach synthesis, unanimous check, and meta-review."""
 
-    RULINGS = {"sections/methods.tex": "GUARD-M: mound and tumulus are synonyms.",
-               "sections/results.tex": "GUARD-R: the site stays unnamed."}
+    RULINGS = {
+        "sections/methods.tex": "GUARD-M: mound and tumulus are synonyms.",
+        "sections/results.tex": "GUARD-R: the site stays unnamed.",
+    }
 
     def _prompt(self, report: dict, label: str) -> str:
         return next(c["prompt"] for c in report["calls"] if c["label"] == label)
 
     def test_paper_scope_stages_get_every_register(self, tmp_path: Path) -> None:
-        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
-                "stance": "adversarial", "settledRulings": self.RULINGS}
+        args = {
+            "targets": [TARGET, f"{REPO}/sections/results.tex"],
+            "repo": REPO,
+            "stance": "adversarial",
+            "settledRulings": self.RULINGS,
+        }
         report = run(tmp_path, args)
         assert report["ok"], report.get("error")
         for label in ("cross-section", "unanimous-check", "meta-reviewer"):
@@ -346,15 +446,19 @@ class TestRulingsReachEveryStage:
         assert "--- sections/methods.tex ---" in synthesis
 
     def test_one_target_meta_review_gets_its_register(self, tmp_path: Path) -> None:
-        args = base_args(stance="adversarial", settledRulings=self.RULINGS,
-                         constraints="no first person")
+        args = base_args(
+            stance="adversarial", settledRulings=self.RULINGS, constraints="no first person"
+        )
         meta = self._prompt(run(tmp_path, args), "meta-reviewer")
         assert "GUARD-M" in meta and "GUARD-R" not in meta
         assert "no first person" in meta
 
     def test_a_single_string_register_appears_once(self, tmp_path: Path) -> None:
-        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
-                "settledRulings": "GUARD-ALL: one register."}
+        args = {
+            "targets": [TARGET, f"{REPO}/sections/results.tex"],
+            "repo": REPO,
+            "settledRulings": "GUARD-ALL: one register.",
+        }
         synthesis = self._prompt(run(tmp_path, args), "cross-section")
         assert synthesis.count("GUARD-ALL") == 1
 
@@ -366,13 +470,17 @@ class TestGateValidity:
         result = run(tmp_path, base_args(stance="adversarial"))["result"]
         assert result["gateValid"] is True
         assert result["coverage"] == {
-            "panel": {"expected": 4, "succeeded": 4}, "crossSection": "not-required",
-            "unanimousCheck": "ran", "metaReview": "ran"}
+            "panel": {"expected": 4, "succeeded": 4},
+            "crossSection": "not-required",
+            "unanimousCheck": "ran",
+            "metaReview": "ran",
+        }
         assert result["verdict"] == "CONFIRMED" and result["cleared"] is True
 
     def test_a_missing_lens_withholds_the_verdict(self, tmp_path: Path) -> None:
-        result = run(tmp_path, base_args(stance="adversarial"),
-                     responses={"completeness": None})["result"]
+        result = run(tmp_path, base_args(stance="adversarial"), responses={"completeness": None})[
+            "result"
+        ]
         assert result["gateValid"] is False
         assert result["verdict"] is None and result["cleared"] is None
         assert result["provisional"] == {"verdict": "CONFIRMED", "cleared": True}
@@ -380,8 +488,9 @@ class TestGateValidity:
 
     @pytest.mark.parametrize("failure", [None, "throw"])
     def test_a_failed_meta_review_withholds_the_verdict(self, tmp_path: Path, failure) -> None:
-        report = run(tmp_path, base_args(stance="adversarial"),
-                     responses={"meta-reviewer": failure})
+        report = run(
+            tmp_path, base_args(stance="adversarial"), responses={"meta-reviewer": failure}
+        )
         assert report["ok"], report.get("error")  # a throw no longer aborts the run
         result = report["result"]
         assert result["coverage"]["metaReview"] == "failed"
@@ -389,8 +498,9 @@ class TestGateValidity:
 
     @pytest.mark.parametrize("failure", [None, "throw"])
     def test_a_failed_unanimous_check_withholds_the_verdict(self, tmp_path: Path, failure) -> None:
-        result = run(tmp_path, base_args(stance="adversarial"),
-                     responses={"unanimous-check": failure})["result"]
+        result = run(
+            tmp_path, base_args(stance="adversarial"), responses={"unanimous-check": failure}
+        )["result"]
         assert result["coverage"]["unanimousCheck"] == "failed"
         assert result["gateValid"] is False and result["verdict"] is None
 
@@ -417,11 +527,19 @@ class TestHarnessChecksItsOwnAnswers:
 
     def test_invalid_as_null_models_a_rejected_output(self, tmp_path: Path) -> None:
         path = tmp_path / "scenario.json"
-        scenario = {"args": base_args(), "responses": {"calibration": {"passes": True}},
-                    "invalidAs": "null"}
+        scenario = {
+            "args": base_args(),
+            "responses": {"calibration": {"passes": True}},
+            "invalidAs": "null",
+        }
         path.write_text(json.dumps(scenario), encoding="utf-8")
-        proc = subprocess.run([NODE, str(HARNESS), str(SCRIPT), str(path)],
-                              capture_output=True, text=True, timeout=60, check=False)
+        proc = subprocess.run(
+            [NODE, str(HARNESS), str(SCRIPT), str(path)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
         result = json.loads(proc.stdout)["result"]
         assert result["partialCoverage"] == 1 and result["gateValid"] is False
 
@@ -432,12 +550,24 @@ class TestAmbiguousAnchorNames:
     @staticmethod
     def _run(tmp_path: Path, context: list[str]) -> dict:
         args = base_args(readOnlyContext=context)
-        return run(tmp_path, args, responses={
-            "consistency": {"passes": False, "clean": [], "confidence": "high",
-                            "findings": [finding("minor", "notes.tex:5")]},
-            "calibration": {"passes": False, "clean": [], "confidence": "high",
-                            "findings": [finding("minor", "notes.tex:5")]},
-        })["result"]
+        return run(
+            tmp_path,
+            args,
+            responses={
+                "consistency": {
+                    "passes": False,
+                    "clean": [],
+                    "confidence": "high",
+                    "findings": [finding("minor", "notes.tex:5")],
+                },
+                "calibration": {
+                    "passes": False,
+                    "clean": [],
+                    "confidence": "high",
+                    "findings": [finding("minor", "notes.tex:5")],
+                },
+            },
+        )["result"]
 
     def test_two_known_files_of_that_name_give_no_token(self, tmp_path: Path) -> None:
         result = self._run(tmp_path, [f"{REPO}/a/notes.tex", f"{REPO}/b/notes.tex"])
@@ -452,10 +582,14 @@ class TestFreshContextPrompts:
     """Found by a real run: standing instructions leaked into a review, and lenses strayed."""
 
     def test_every_agent_keeps_standing_rules_but_not_personal_facts(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
-        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
-                "stance": "adversarial"}
+        args = {
+            "targets": [TARGET, f"{REPO}/sections/results.tex"],
+            "repo": REPO,
+            "stance": "adversarial",
+        }
         report = run(tmp_path, args)
         for call in report["calls"]:
             assert "are not evidence about this paper" in call["prompt"], call["label"]
@@ -466,19 +600,21 @@ class TestFreshContextPrompts:
         assert "Read ONLY the files named in this prompt" in lens["prompt"]
 
     def test_consistency_lens_is_not_asked_about_sections_it_cannot_see(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO}
         report = run(tmp_path, args)
-        prompt = next(c["prompt"] for c in report["calls"]
-                      if c["label"].startswith("consistency"))
+        prompt = next(c["prompt"] for c in report["calls"] if c["label"].startswith("consistency"))
         assert "any other section in the target list" not in prompt
 
     def test_undefined_labels_depend_on_the_stance(self, tmp_path: Path) -> None:
         def consistency(stance: str) -> str:
             report = run(tmp_path, base_args(stance=stance))
-            return next(c["prompt"] for c in report["calls"]
-                        if c["label"].startswith("consistency"))
+            return next(
+                c["prompt"] for c in report["calls"] if c["label"].startswith("consistency")
+            )
+
         assert "undefined label IS a defect" in consistency("adversarial")
         assert "EXPECTED while drafting" in consistency("critical-friend")
 
@@ -497,8 +633,11 @@ class TestHedgingGuardEverywhere:
     """The calibration test failed when only the calibration lens carried the guard."""
 
     def test_every_lens_and_stage_carries_the_hedging_guard(self, tmp_path: Path) -> None:
-        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
-                "stance": "adversarial"}
+        args = {
+            "targets": [TARGET, f"{REPO}/sections/results.tex"],
+            "repo": REPO,
+            "stance": "adversarial",
+        }
         report = run(tmp_path, args)
         for call in report["calls"]:
             assert "HEDGING GUARD" in call["prompt"], call["label"]
@@ -513,7 +652,6 @@ class TestHedgingGuardEverywhere:
         assert all("HEDGING GUARD" in c["prompt"] for c in report["calls"])
 
 
-
 class TestMetaReviewerGetsEachFindingsConditions:
     """Review finding R35: the meta-reviewer is told to test each finding against its
     retraction condition, so each finding's own conditions must reach it, attached to it."""
@@ -526,16 +664,32 @@ class TestMetaReviewerGetsEachFindingsConditions:
 
     def test_each_findings_conditions_travel_with_it(self, tmp_path: Path) -> None:
         def sentinel_finding(tag: str) -> dict:
-            return finding("major", detail=f"detail-{tag}", targetClaim=f"claim-{tag}",
-                           counterCondition=f"COUNTER-{tag}",
-                           retractionCondition=f"RETRACT-{tag}")
+            return finding(
+                "major",
+                detail=f"detail-{tag}",
+                targetClaim=f"claim-{tag}",
+                counterCondition=f"COUNTER-{tag}",
+                retractionCondition=f"RETRACT-{tag}",
+            )
 
-        report = run(tmp_path, base_args(stance="adversarial"), responses={
-            "calibration": {"passes": False, "findings": [sentinel_finding("A")],
-                            "clean": [], "confidence": "high"},
-            "source-fidelity": {"passes": False, "findings": [sentinel_finding("B")],
-                                "clean": [], "confidence": "high"},
-        })
+        report = run(
+            tmp_path,
+            base_args(stance="adversarial"),
+            responses={
+                "calibration": {
+                    "passes": False,
+                    "findings": [sentinel_finding("A")],
+                    "clean": [],
+                    "confidence": "high",
+                },
+                "source-fidelity": {
+                    "passes": False,
+                    "findings": [sentinel_finding("B")],
+                    "clean": [],
+                    "confidence": "high",
+                },
+            },
+        )
         meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
         entries = self._entries(meta)
         for tag in ("A", "B"):
@@ -547,10 +701,18 @@ class TestMetaReviewerGetsEachFindingsConditions:
             assert f"RETRACT-{other}" not in mine[0]
 
     def test_a_finding_without_conditions_says_so(self, tmp_path: Path) -> None:
-        report = run(tmp_path, base_args(stance="adversarial"), responses={
-            "calibration": {"passes": False, "findings": [finding("minor", detail="bare")],
-                            "clean": [], "confidence": "high"},
-        })
+        report = run(
+            tmp_path,
+            base_args(stance="adversarial"),
+            responses={
+                "calibration": {
+                    "passes": False,
+                    "findings": [finding("minor", detail="bare")],
+                    "clean": [],
+                    "confidence": "high",
+                },
+            },
+        )
         meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
         bare = next(e for e in self._entries(meta) if "bare" in e)
         assert "retraction condition: (none stated)" in bare
@@ -592,8 +754,7 @@ class TestMoreHedgingNeedsWeakerEvidence:
     @pytest.mark.parametrize("stance", ["adversarial", "critical-friend"])
     def test_every_lens_and_stage_carries_the_rule(self, tmp_path: Path, stance: str) -> None:
         """Paper scope, so the synthesis (and, adversarially, both checks) run too."""
-        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO,
-                "stance": stance}
+        args = {"targets": [TARGET, f"{REPO}/sections/results.tex"], "repo": REPO, "stance": stance}
         report = run(tmp_path, args)
         assert report["ok"], report.get("error")
         labels = {c["label"] for c in report["calls"]}
@@ -602,38 +763,53 @@ class TestMoreHedgingNeedsWeakerEvidence:
             assert {"unanimous-check", "meta-reviewer"} <= labels
         for call in report["calls"]:
             prompt = flat(call["prompt"])
-            assert ("A finding that asks for more hedging, a weaker verb, or a softer claim "
-                    "must cite evidence that is weaker than the claim as worded") in prompt, \
-                call["label"]
-            assert ("A hedge elsewhere in the text, an argument from consistency of tone, a "
-                    "general preference for caution, or the claim's directness alone is not "
-                    "such evidence; without it, there is no finding.") in prompt, call["label"]
+            assert (
+                "A finding that asks for more hedging, a weaker verb, or a softer claim "
+                "must cite evidence that is weaker than the claim as worded"
+            ) in prompt, call["label"]
+            assert (
+                "A hedge elsewhere in the text, an argument from consistency of tone, a "
+                "general preference for caution, or the claim's directness alone is not "
+                "such evidence; without it, there is no finding."
+            ) in prompt, call["label"]
 
     def test_the_calibration_lens_states_it_under_hedges(self, tmp_path: Path) -> None:
         """Dimension (2), on mis-calibrated hedges, repeats the rule in brief."""
         report = run(tmp_path, base_args(stance="adversarial"))
         lens = next(c["prompt"] for c in report["calls"] if c["label"].startswith("calibration"))
         dimension = flat(lens.split("(2) Mis-calibrated hedges", 1)[1].split("(3) Altitude", 1)[0])
-        assert ("To ask for more hedging, a weaker verb, or a softer claim, cite the evidence "
-                "that is weaker than the claim as worded") in dimension
-        assert ("a hedge elsewhere in the text, consistency of tone, or a general preference "
-                "for caution is not that evidence") in dimension
+        assert (
+            "To ask for more hedging, a weaker verb, or a softer claim, cite the evidence "
+            "that is weaker than the claim as worded"
+        ) in dimension
+        assert (
+            "a hedge elsewhere in the text, consistency of tone, or a general preference "
+            "for caution is not that evidence"
+        ) in dimension
         # Both directions of mis-calibration stay reportable.
         assert "a hedge on a strongly-evidenced claim undersells" in dimension
 
     def test_the_meta_reviewer_rejects_a_request_without_weaker_evidence(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Branch (a), for hedging-only findings, calls such a request not sound."""
         report = run(tmp_path, base_args(stance="adversarial"))
         meta = next(c["prompt"] for c in report["calls"] if c["label"] == "meta-reviewer")
-        branch = flat(meta.split("(a) A finding whose sole objection", 1)[1]
-                      .split("(b) A finding about a substantive defect", 1)[0])
-        assert ("A finding that asks for more hedging, a weaker verb, or a softer claim shows "
-                "this only by citing evidence weaker than the claim as worded") in branch
-        assert ("If the hedge is calibrated, if such a request cites no weaker evidence, or if "
-                "the text already meets the finding's retraction condition, the finding is not "
-                "sound: classify it semantic-drift") in branch
+        branch = flat(
+            meta.split("(a) A finding whose sole objection", 1)[1].split(
+                "(b) A finding about a substantive defect", 1
+            )[0]
+        )
+        assert (
+            "A finding that asks for more hedging, a weaker verb, or a softer claim shows "
+            "this only by citing evidence weaker than the claim as worded"
+        ) in branch
+        assert (
+            "If the hedge is calibrated, if such a request cites no weaker evidence, or if "
+            "the text already meets the finding's retraction condition, the finding is not "
+            "sound: classify it semantic-drift"
+        ) in branch
 
 
 class TestEvidenceGapsStayReportable:

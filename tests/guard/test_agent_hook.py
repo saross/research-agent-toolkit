@@ -15,8 +15,12 @@ HOOK = Path(__file__).resolve().parents[2] / "guard" / "agent_hook.py"
 def run(command: str, cwd: Path, home: Path, env: dict | None = None) -> dict | None:
     payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}
     result = subprocess.run(
-        [sys.executable, "-I", str(HOOK), "--home", str(home)], input=json.dumps(payload),
-        capture_output=True, text=True, env=env, check=True,
+        [sys.executable, "-I", str(HOOK), "--home", str(home)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
     )
     return json.loads(result.stdout) if result.stdout.strip() else None
 
@@ -124,16 +128,24 @@ def test_cd_into_an_unguarded_clone_is_followed(world, tmp_path):
 def test_other_tools_are_ignored(world):
     payload = {"tool_name": "Read", "tool_input": {"file_path": "/etc/hosts"}}
     result = subprocess.run(
-        [sys.executable, "-I", str(HOOK), "--home", str(world.guard)], input=json.dumps(payload),
-        capture_output=True, text=True, env=world.env, check=True,
+        [sys.executable, "-I", str(HOOK), "--home", str(world.guard)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=world.env,
+        check=True,
     )
     assert result.stdout == ""
 
 
 def test_malformed_input_is_refused(world):
     result = subprocess.run(
-        [sys.executable, "-I", str(HOOK), "--home", str(world.guard)], input="{not json",
-        capture_output=True, text=True, env=world.env, check=True,
+        [sys.executable, "-I", str(HOOK), "--home", str(world.guard)],
+        input="{not json",
+        capture_output=True,
+        text=True,
+        env=world.env,
+        check=True,
     )
     assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
@@ -146,8 +158,14 @@ def _engine(world, sub):
 
 
 @pytest.mark.parametrize(
-    "sub", ["override --repo a/b --push 0123", "deny-add --tier tier3-private", "deny-rebuild",
-            "deny-remove --tier x", "deny-check"],
+    "sub",
+    [
+        "override --repo a/b --push 0123",
+        "deny-add --tier tier3-private",
+        "deny-rebuild",
+        "deny-remove --tier x",
+        "deny-check",
+    ],
 )
 def test_guard_administration_is_refused(world, sub):
     result = run(_engine(world, sub), world.work, world.guard, world.env)
@@ -203,13 +221,15 @@ def test_reading_the_guard_folder_passes(world, template):
     assert kind(run(command, world.work, world.guard, world.env)) == "none", command
 
 
-
-
 def _file_tool(world, tool, path):
     payload = {"tool_name": tool, "tool_input": {"file_path": str(path)}, "cwd": str(world.work)}
     result = subprocess.run(
-        [sys.executable, "-I", str(HOOK), "--home", str(world.guard)], input=json.dumps(payload),
-        capture_output=True, text=True, env=world.env, check=True,
+        [sys.executable, "-I", str(HOOK), "--home", str(world.guard)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=world.env,
+        check=True,
     )
     return json.loads(result.stdout) if result.stdout.strip() else None
 
@@ -306,16 +326,29 @@ def test_the_wired_form_without_home_guards_the_default_folder(tmp_path):
     (guard / "overrides").mkdir(parents=True)
     env = {"PATH": "/usr/bin:/bin", "HOME": str(home)}
     for payload in (
-        {"tool_name": "Write", "tool_input": {"file_path": str(guard / "overrides" / "x.json")},
-         "cwd": str(tmp_path)},
-        {"tool_name": "Bash", "tool_input": {"command": "cd $HOME/.config/publish-guard && "
-                                             "touch overrides/x.json"}, "cwd": str(tmp_path)},
-        {"tool_name": "Bash", "tool_input": {"command": "echo {} > ~/.config/publish-guard/"
-                                             "overrides/x.json"}, "cwd": str(tmp_path)},
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(guard / "overrides" / "x.json")},
+            "cwd": str(tmp_path),
+        },
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "cd $HOME/.config/publish-guard && touch overrides/x.json"},
+            "cwd": str(tmp_path),
+        },
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "echo {} > ~/.config/publish-guard/overrides/x.json"},
+            "cwd": str(tmp_path),
+        },
     ):
         result = subprocess.run(
-            [sys.executable, "-I", str(HOOK)], input=json.dumps(payload), capture_output=True,
-            text=True, env=env, check=True,
+            [sys.executable, "-I", str(HOOK)],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=env,
+            check=True,
         )
         assert kind(json.loads(result.stdout) if result.stdout.strip() else None) == "deny"
 
@@ -339,12 +372,18 @@ def test_more_writers_into_the_guard_folder_are_refused(world, template):
 
 
 def test_notebook_edits_into_the_guard_folder_are_refused(world):
-    payload = {"tool_name": "NotebookEdit",
-               "tool_input": {"notebook_path": str(world.guard / "x.ipynb")},
-               "cwd": str(world.work)}
+    payload = {
+        "tool_name": "NotebookEdit",
+        "tool_input": {"notebook_path": str(world.guard / "x.ipynb")},
+        "cwd": str(world.work),
+    }
     result = subprocess.run(
-        [sys.executable, "-I", str(HOOK), "--home", str(world.guard)], input=json.dumps(payload),
-        capture_output=True, text=True, env=world.env, check=True,
+        [sys.executable, "-I", str(HOOK), "--home", str(world.guard)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        env=world.env,
+        check=True,
     )
     assert kind(json.loads(result.stdout)) == "deny"
 
@@ -377,8 +416,10 @@ def test_write_targets_in_ordinary_option_forms_are_refused(world, template):
 def test_a_contents_copy_onto_a_folder_holding_the_guard_is_refused(world, tmp_path):
     source = tmp_path / "staging"
     (source / world.guard.name).mkdir(parents=True)
-    for command in (f"rsync -a {source}/ {world.guard.parent}/",
-                    f"cp -r {source}/. {world.guard.parent}"):
+    for command in (
+        f"rsync -a {source}/ {world.guard.parent}/",
+        f"cp -r {source}/. {world.guard.parent}",
+    ):
         assert kind(run(command, world.work, world.guard, world.env)) == "deny", command
 
 

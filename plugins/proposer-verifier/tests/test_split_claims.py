@@ -94,8 +94,10 @@ def test_one_passing_verdict_does_not_verify_a_five_claim_paper() -> None:
     verified, unverified = split_claims.split(claims_for("10.1/a"), corrections)
     assert verified == []
     assert unverified[0]["verification"] == [
-        "year: no verdict", "title: no verdict",
-        "citation_count: no verdict", "doi_resolves: no verdict",
+        "year: no verdict",
+        "title: no verdict",
+        "citation_count: no verdict",
+        "doi_resolves: no verdict",
     ]
 
 

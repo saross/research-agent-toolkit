@@ -116,8 +116,16 @@ def _run_in_pty(command, env, cwd, reply, prompt=b"Reason"):
 
 def _override_command(sandbox, push_id):
     return [
-        sys.executable, "-I", str(ENGINE), "--home", str(sandbox.guard), "override",
-        "--repo", "test/public", "--push", push_id,
+        sys.executable,
+        "-I",
+        str(ENGINE),
+        "--home",
+        str(sandbox.guard),
+        "override",
+        "--repo",
+        "test/public",
+        "--push",
+        push_id,
     ]
 
 
@@ -125,8 +133,12 @@ def test_override_refuses_without_a_terminal(sandbox):
     sandbox.seed_public()
     sha = sandbox.commit("a.txt", f"{PERSON}\n")
     result = subprocess.run(
-        _override_command(sandbox, blocked_push_id(sandbox)), input="because\n", text=True,
-        capture_output=True, env=sandbox.env, cwd=sandbox.work,
+        _override_command(sandbox, blocked_push_id(sandbox)),
+        input="because\n",
+        text=True,
+        capture_output=True,
+        env=sandbox.env,
+        cwd=sandbox.work,
     )
     assert result.returncode != 0
     assert_blocked(sandbox.push(), sandbox, sha)
@@ -136,7 +148,9 @@ def test_override_lets_one_exact_push_through_once_and_logs_the_reason(sandbox):
     sandbox.seed_public()
     sha = sandbox.commit("a.txt", f"{PERSON}\n")
     code, output = _run_in_pty(
-        _override_command(sandbox, blocked_push_id(sandbox)), sandbox.env, sandbox.work,
+        _override_command(sandbox, blocked_push_id(sandbox)),
+        sandbox.env,
+        sandbox.work,
         "false positive, checked",
     )
     assert code == 0, output
@@ -307,8 +321,9 @@ def without_test_mode(sandbox):
 @pytest.mark.parametrize("command", ["deny-check", "deny-remove", "deny-add", "deny-rebuild"])
 def test_list_commands_need_a_terminal(sandbox, command):
     without_test_mode(sandbox)
-    args = [command] + (["--tier", "tier2a-people"] if command in ("deny-remove", "deny-add")
-                        else [])
+    args = [command] + (
+        ["--tier", "tier2a-people"] if command in ("deny-remove", "deny-add") else []
+    )
     if command == "deny-rebuild":
         args += ["--tier", "tier2a-people", "--stdin"]
     result = sandbox.engine(*args, stdin=f"{PERSON}\n")
@@ -441,8 +456,15 @@ def test_audit_reports_masked_findings_across_history(sandbox):
     sandbox.commit("a.txt", f"{PERSON}\n")
     sandbox.commit("b.txt", "fine\n")
     result = sandbox.engine(
-        "audit", "--repo", str(sandbox.work), "--name", "test/public", "--as", "public",
-        "--rev", "HEAD",
+        "audit",
+        "--repo",
+        str(sandbox.work),
+        "--name",
+        "test/public",
+        "--as",
+        "public",
+        "--rev",
+        "HEAD",
     )
     assert result.returncode == 1, result.stderr
     assert "tier2a-people" in result.stdout
@@ -451,7 +473,14 @@ def test_audit_reports_masked_findings_across_history(sandbox):
 
 def test_audit_is_clean_on_clean_history(sandbox):
     result = sandbox.engine(
-        "audit", "--repo", str(sandbox.work), "--name", "test/public", "--as", "public",
-        "--rev", "HEAD",
+        "audit",
+        "--repo",
+        str(sandbox.work),
+        "--name",
+        "test/public",
+        "--as",
+        "public",
+        "--rev",
+        "HEAD",
     )
     assert result.returncode == 0, result.stdout + result.stderr

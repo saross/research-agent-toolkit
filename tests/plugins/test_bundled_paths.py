@@ -27,13 +27,16 @@ REFERENCE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\s\"'`)\]>]+)")
 def _texts() -> list[Path]:
     """Every Markdown file that Claude Code reads as plugin content."""
     return sorted(
-        p for folder in ("agents", "commands", "skills")
+        p
+        for folder in ("agents", "commands", "skills")
         for p in PLUGINS.glob(f"*/{folder}/**/*.md")
     )
 
 
 @pytest.mark.parametrize(
-    "text", _texts(), ids=lambda p: str(p.relative_to(PLUGINS)),
+    "text",
+    _texts(),
+    ids=lambda p: str(p.relative_to(PLUGINS)),
 )
 def test_every_bundled_reference_exists(text: Path) -> None:
     """Each referenced path exists inside the plugin that names it."""
@@ -48,7 +51,8 @@ def test_every_bundled_reference_exists(text: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "skill", sorted(PLUGINS.glob("*/skills/*/SKILL.md")),
+    "skill",
+    sorted(PLUGINS.glob("*/skills/*/SKILL.md")),
     ids=lambda p: f"{p.parent.parent.parent.name}/{p.parent.name}",
 )
 def test_skill_front_matter_names_its_folder(skill: Path) -> None:
